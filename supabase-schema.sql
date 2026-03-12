@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   url TEXT NOT NULL,
   source TEXT NOT NULL,
   salary TEXT,
-  posted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  posted_at TIMESTAMPTZ DEFAULT NULL,
   scraped_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   tags TEXT[] NOT NULL DEFAULT '{}',
   is_active BOOLEAN NOT NULL DEFAULT true,
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 CREATE INDEX IF NOT EXISTS idx_jobs_type ON jobs(type);
 CREATE INDEX IF NOT EXISTS idx_jobs_experience_level ON jobs(experience_level);
 CREATE INDEX IF NOT EXISTS idx_jobs_source ON jobs(source);
-CREATE INDEX IF NOT EXISTS idx_jobs_posted_at ON jobs(posted_at DESC);
+CREATE INDEX IF NOT EXISTS idx_jobs_posted_at ON jobs(posted_at DESC NULLS LAST);
 CREATE INDEX IF NOT EXISTS idx_jobs_is_active ON jobs(is_active);
 CREATE INDEX IF NOT EXISTS idx_jobs_tags ON jobs USING GIN(tags);
 CREATE INDEX IF NOT EXISTS idx_jobs_title_search ON jobs USING GIN(to_tsvector('english', title));

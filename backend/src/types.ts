@@ -9,7 +9,7 @@ export interface Job {
   url: string;
   source: string;
   salary?: string;
-  posted_at: string;
+  posted_at: string | null;
   scraped_at: string;
   tags: string[];
   is_active: boolean;

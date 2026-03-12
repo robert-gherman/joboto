@@ -82,10 +82,11 @@ export default function JobCard({ job, index = 0, view = 'grid' }: JobCardProps)
   };
 
   const postedAgo = (() => {
+    if (!job.posted_at) return 'Date unknown';
     try {
       return formatDistanceToNow(new Date(job.posted_at), { addSuffix: true });
     } catch {
-      return '';
+      return 'Date unknown';
     }
   })();
 

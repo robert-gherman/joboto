@@ -15,72 +15,74 @@ export class LinkedInScraper extends BaseScraper {
   name = 'LinkedIn';
   baseUrl = 'https://www.linkedin.com';
 
-  // Comprehensive search queries for Romania frontend/web/JS jobs
-  // f_TPR=r604800 = past week, f_TPR=r2592000 = past month
+  // f_TPR=r86400 = past 24h (today), f_TPR=r604800 = past week, f_TPR=r2592000 = past month
   // geoId=106670623 = Romania
-  private searchUrls = [
-    // Core frontend searches
-    'https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Romania&geoId=106670623&f_TPR=r2592000&start=0',
-    'https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Romania&geoId=106670623&f_TPR=r2592000&start=25',
-    'https://www.linkedin.com/jobs/search/?keywords=front+end+developer&location=Romania&geoId=106670623&f_TPR=r2592000',
-    'https://www.linkedin.com/jobs/search/?keywords=frontend+engineer&location=Romania&geoId=106670623&f_TPR=r2592000',
 
-    // React specific
+  // TODAY urls — fetched first, highest priority for fresh jobs
+  private todayUrls = [
+    'https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Romania&geoId=106670623&f_TPR=r86400&start=0',
+    'https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Romania&geoId=106670623&f_TPR=r86400&start=25',
+    'https://www.linkedin.com/jobs/search/?keywords=front+end+developer&location=Romania&geoId=106670623&f_TPR=r86400',
+    'https://www.linkedin.com/jobs/search/?keywords=react+developer&location=Romania&geoId=106670623&f_TPR=r86400&start=0',
+    'https://www.linkedin.com/jobs/search/?keywords=react+developer&location=Romania&geoId=106670623&f_TPR=r86400&start=25',
+    'https://www.linkedin.com/jobs/search/?keywords=web+developer&location=Romania&geoId=106670623&f_TPR=r86400&start=0',
+    'https://www.linkedin.com/jobs/search/?keywords=web+developer&location=Romania&geoId=106670623&f_TPR=r86400&start=25',
+    'https://www.linkedin.com/jobs/search/?keywords=javascript+developer&location=Romania&geoId=106670623&f_TPR=r86400',
+    'https://www.linkedin.com/jobs/search/?keywords=typescript+developer&location=Romania&geoId=106670623&f_TPR=r86400',
+    'https://www.linkedin.com/jobs/search/?keywords=full+stack+developer&location=Romania&geoId=106670623&f_TPR=r86400',
+    'https://www.linkedin.com/jobs/search/?keywords=fullstack+developer&location=Romania&geoId=106670623&f_TPR=r86400',
+    'https://www.linkedin.com/jobs/search/?keywords=frontend+engineer&location=Romania&geoId=106670623&f_TPR=r86400',
+    'https://www.linkedin.com/jobs/search/?keywords=junior+developer&location=Romania&geoId=106670623&f_TPR=r86400',
+    'https://www.linkedin.com/jobs/search/?keywords=junior+frontend&location=Romania&geoId=106670623&f_TPR=r86400',
+    'https://www.linkedin.com/jobs/search/?keywords=software+engineer&location=Romania&geoId=106670623&f_TPR=r86400',
+    'https://www.linkedin.com/jobs/search/?keywords=node.js+developer&location=Romania&geoId=106670623&f_TPR=r86400',
+    'https://www.linkedin.com/jobs/search/?keywords=angular+developer&location=Romania&geoId=106670623&f_TPR=r86400',
+    'https://www.linkedin.com/jobs/search/?keywords=vue+developer&location=Romania&geoId=106670623&f_TPR=r86400',
+    'https://www.linkedin.com/jobs/search/?keywords=next.js+developer&location=Romania&geoId=106670623&f_TPR=r86400',
+    // City-specific today
+    'https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Bucharest&f_TPR=r86400&start=0',
+    'https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Bucharest&f_TPR=r86400&start=25',
+    'https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Cluj-Napoca&f_TPR=r86400',
+    'https://www.linkedin.com/jobs/search/?keywords=react+developer&location=Bucharest&f_TPR=r86400',
+  ];
+
+  // WEEK urls — broader coverage
+  private weekUrls = [
+    'https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Romania&geoId=106670623&f_TPR=r604800&start=0',
+    'https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Romania&geoId=106670623&f_TPR=r604800&start=25',
+    'https://www.linkedin.com/jobs/search/?keywords=react+developer&location=Romania&geoId=106670623&f_TPR=r604800&start=0',
+    'https://www.linkedin.com/jobs/search/?keywords=react+developer&location=Romania&geoId=106670623&f_TPR=r604800&start=25',
+    'https://www.linkedin.com/jobs/search/?keywords=web+developer&location=Romania&geoId=106670623&f_TPR=r604800&start=0',
+    'https://www.linkedin.com/jobs/search/?keywords=javascript+developer&location=Romania&geoId=106670623&f_TPR=r604800',
+    'https://www.linkedin.com/jobs/search/?keywords=full+stack+developer&location=Romania&geoId=106670623&f_TPR=r604800',
+    'https://www.linkedin.com/jobs/search/?keywords=junior+developer&location=Romania&geoId=106670623&f_TPR=r604800',
+    'https://www.linkedin.com/jobs/search/?keywords=intern+developer&location=Romania&geoId=106670623&f_TPR=r604800',
+    'https://www.linkedin.com/jobs/search/?keywords=internship+software&location=Romania&geoId=106670623&f_TPR=r604800',
+    'https://www.linkedin.com/jobs/search/?keywords=software+engineer&location=Romania&geoId=106670623&f_TPR=r604800',
+    'https://www.linkedin.com/jobs/search/?keywords=typescript+developer&location=Romania&geoId=106670623&f_TPR=r604800',
+    'https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Bucharest&f_TPR=r604800',
+    'https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Cluj-Napoca&f_TPR=r604800',
+    'https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Timisoara&f_TPR=r604800',
+    'https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Iasi&f_TPR=r604800',
+  ];
+
+  // MONTH urls — catch older listings still active
+  private monthUrls = [
     'https://www.linkedin.com/jobs/search/?keywords=react+developer&location=Romania&geoId=106670623&f_TPR=r2592000&start=0',
     'https://www.linkedin.com/jobs/search/?keywords=react+developer&location=Romania&geoId=106670623&f_TPR=r2592000&start=25',
-    'https://www.linkedin.com/jobs/search/?keywords=react+engineer&location=Romania&geoId=106670623&f_TPR=r2592000',
+    'https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Romania&geoId=106670623&f_TPR=r2592000&start=0',
+    'https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Romania&geoId=106670623&f_TPR=r2592000&start=25',
     'https://www.linkedin.com/jobs/search/?keywords=reactjs&location=Romania&geoId=106670623&f_TPR=r2592000',
-
-    // Web developer
-    'https://www.linkedin.com/jobs/search/?keywords=web+developer&location=Romania&geoId=106670623&f_TPR=r2592000&start=0',
-    'https://www.linkedin.com/jobs/search/?keywords=web+developer&location=Romania&geoId=106670623&f_TPR=r2592000&start=25',
-
-    // JavaScript / TypeScript
-    'https://www.linkedin.com/jobs/search/?keywords=javascript+developer&location=Romania&geoId=106670623&f_TPR=r2592000&start=0',
-    'https://www.linkedin.com/jobs/search/?keywords=javascript+developer&location=Romania&geoId=106670623&f_TPR=r2592000&start=25',
-    'https://www.linkedin.com/jobs/search/?keywords=typescript+developer&location=Romania&geoId=106670623&f_TPR=r2592000',
-
-    // Full stack
-    'https://www.linkedin.com/jobs/search/?keywords=full+stack+developer&location=Romania&geoId=106670623&f_TPR=r2592000&start=0',
-    'https://www.linkedin.com/jobs/search/?keywords=full+stack+developer&location=Romania&geoId=106670623&f_TPR=r2592000&start=25',
-    'https://www.linkedin.com/jobs/search/?keywords=fullstack+developer&location=Romania&geoId=106670623&f_TPR=r2592000',
-
-    // Other frameworks
-    'https://www.linkedin.com/jobs/search/?keywords=next.js+developer&location=Romania&geoId=106670623&f_TPR=r2592000',
-    'https://www.linkedin.com/jobs/search/?keywords=vue+developer&location=Romania&geoId=106670623&f_TPR=r2592000',
-    'https://www.linkedin.com/jobs/search/?keywords=angular+developer&location=Romania&geoId=106670623&f_TPR=r2592000',
-    'https://www.linkedin.com/jobs/search/?keywords=node.js+developer&location=Romania&geoId=106670623&f_TPR=r2592000',
-
-    // UI/UX + HTML/CSS
+    'https://www.linkedin.com/jobs/search/?keywords=frontend+engineer&location=Romania&geoId=106670623&f_TPR=r2592000',
     'https://www.linkedin.com/jobs/search/?keywords=ui+developer&location=Romania&geoId=106670623&f_TPR=r2592000',
     'https://www.linkedin.com/jobs/search/?keywords=html+css+developer&location=Romania&geoId=106670623&f_TPR=r2592000',
-
-    // Junior / Internship specific
-    'https://www.linkedin.com/jobs/search/?keywords=junior+frontend&location=Romania&geoId=106670623&f_TPR=r2592000',
-    'https://www.linkedin.com/jobs/search/?keywords=junior+developer&location=Romania&geoId=106670623&f_TPR=r2592000&start=0',
-    'https://www.linkedin.com/jobs/search/?keywords=junior+developer&location=Romania&geoId=106670623&f_TPR=r2592000&start=25',
     'https://www.linkedin.com/jobs/search/?keywords=junior+react&location=Romania&geoId=106670623&f_TPR=r2592000',
-    'https://www.linkedin.com/jobs/search/?keywords=intern+developer&location=Romania&geoId=106670623&f_TPR=r2592000',
-    'https://www.linkedin.com/jobs/search/?keywords=internship+software&location=Romania&geoId=106670623&f_TPR=r2592000',
     'https://www.linkedin.com/jobs/search/?keywords=stagiar+developer&location=Romania&geoId=106670623&f_TPR=r2592000',
-
-    // Romanian city-specific
-    'https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Bucharest&f_TPR=r2592000&start=0',
-    'https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Bucharest&f_TPR=r2592000&start=25',
-    'https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Cluj-Napoca&f_TPR=r2592000',
-    'https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Timisoara&f_TPR=r2592000',
-    'https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Iasi&f_TPR=r2592000',
+    'https://www.linkedin.com/jobs/search/?keywords=frontend+developer+remote&location=Romania&geoId=106670623&f_TPR=r2592000',
+    'https://www.linkedin.com/jobs/search/?keywords=react+remote&location=Romania&geoId=106670623&f_TPR=r2592000',
     'https://www.linkedin.com/jobs/search/?keywords=react+developer&location=Bucharest&f_TPR=r2592000',
     'https://www.linkedin.com/jobs/search/?keywords=react+developer&location=Cluj-Napoca&f_TPR=r2592000',
     'https://www.linkedin.com/jobs/search/?keywords=web+developer&location=Bucharest&f_TPR=r2592000',
-
-    // Software engineer (often includes frontend)
-    'https://www.linkedin.com/jobs/search/?keywords=software+engineer&location=Romania&geoId=106670623&f_TPR=r604800&start=0',
-    'https://www.linkedin.com/jobs/search/?keywords=software+engineer&location=Romania&geoId=106670623&f_TPR=r604800&start=25',
-
-    // Remote jobs available to Romania
-    'https://www.linkedin.com/jobs/search/?keywords=frontend+developer+remote&location=Romania&geoId=106670623&f_TPR=r2592000',
-    'https://www.linkedin.com/jobs/search/?keywords=react+remote&location=Romania&geoId=106670623&f_TPR=r2592000',
   ];
 
   async scrape(): Promise<ScraperResult> {
@@ -89,7 +91,10 @@ export class LinkedInScraper extends BaseScraper {
       let successCount = 0;
       let failCount = 0;
 
-      for (const searchUrl of this.searchUrls) {
+      // Scrape all URL groups: today first, then week, then month
+      const allUrls = [...this.todayUrls, ...this.weekUrls, ...this.monthUrls];
+
+      for (const searchUrl of allUrls) {
         try {
           const html = await this.fetchPage(searchUrl);
           const jobs = this.parseListings(html);
@@ -98,12 +103,12 @@ export class LinkedInScraper extends BaseScraper {
           if (jobs.length > 0) {
             this.log(`Found ${jobs.length} jobs from search`);
           }
-          // Longer delay for LinkedIn to avoid rate limiting
+          // Delay to avoid rate limiting
           await delay(2000 + Math.random() * 1500);
         } catch (err) {
           failCount++;
           this.logError(`Failed to scrape search URL`, err);
-          // On rate limit, wait longer
+          // On failure wait longer to avoid rate limit
           await delay(5000 + Math.random() * 3000);
         }
       }
@@ -115,7 +120,7 @@ export class LinkedInScraper extends BaseScraper {
         return true;
       });
 
-      this.log(`Scraped ${successCount}/${this.searchUrls.length} URLs (${failCount} failed)`);
+      this.log(`Scraped ${successCount}/${allUrls.length} URLs (${failCount} failed)`);
       this.log(`Total unique jobs: ${uniqueJobs.length}`);
       return this.success(uniqueJobs);
     } catch (error) {
@@ -173,12 +178,23 @@ export class LinkedInScraper extends BaseScraper {
           ).text()
         ) || 'Romania';
 
-        const dateStr = cleanText(
-          el.find(
-            'time, .job-search-card__listdate, datetime, span[class*="date"]'
-          ).attr('datetime') ||
-          el.find('time, span[class*="date"]').text()
-        );
+        // Extract the REAL posted date from LinkedIn's <time datetime="YYYY-MM-DD"> element
+        const timeEl = el.find('time');
+        const dateTimeAttr = timeEl.attr('datetime') || '';
+        const dateText = cleanText(timeEl.text());
+
+        // Prefer the datetime attribute (e.g. "2026-03-12") — this is the actual publish date
+        let postedAt: string | null = null;
+        if (dateTimeAttr) {
+          const parsed = new Date(dateTimeAttr);
+          if (!isNaN(parsed.getTime())) {
+            postedAt = parsed.toISOString();
+          }
+        }
+        // Fallback to text like "2 hours ago", "3 days ago"
+        if (!postedAt && dateText) {
+          postedAt = normalizeDate(dateText);
+        }
 
         const description = cleanText(
           el.find('.job-search-card__snippet, .base-search-card__snippet, p[class*="snippet"]').text()
@@ -196,7 +212,7 @@ export class LinkedInScraper extends BaseScraper {
           description: description || title,
           url,
           source: this.name,
-          posted_at: normalizeDate(dateStr),
+          posted_at: postedAt,
           scraped_at: new Date().toISOString(),
           tags: extractTags(title, description),
           is_active: true,

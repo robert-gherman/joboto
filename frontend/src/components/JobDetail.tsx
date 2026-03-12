@@ -68,14 +68,16 @@ export default function JobDetail({ job, similarJobs = [] }: JobDetailProps) {
   };
 
   const postedDate = (() => {
+    if (!job.posted_at) return 'Date unknown';
     try {
       return format(new Date(job.posted_at), 'MMM d, yyyy');
     } catch {
-      return '';
+      return 'Date unknown';
     }
   })();
 
   const postedAgo = (() => {
+    if (!job.posted_at) return '';
     try {
       return formatDistanceToNow(new Date(job.posted_at), { addSuffix: true });
     } catch {
@@ -191,10 +193,9 @@ export default function JobDetail({ job, similarJobs = [] }: JobDetailProps) {
           {/* Description */}
           <div className="rounded-xl border border-border bg-surface-card p-6">
             <h2 className="text-lg font-semibold text-text-primary mb-4">Job Description</h2>
-            <div
-              className="prose prose-invert prose-sm max-w-none text-text-secondary leading-relaxed [&_h1]:text-text-primary [&_h2]:text-text-primary [&_h3]:text-text-primary [&_strong]:text-text-primary [&_a]:text-primary-light [&_ul]:list-disc [&_ol]:list-decimal [&_li]:ml-4"
-              dangerouslySetInnerHTML={{ __html: job.description }}
-            />
+            <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-line">
+              {job.description}
+            </p>
           </div>
 
           {/* Tags */}

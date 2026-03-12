@@ -147,6 +147,16 @@ export class BestJobsScraper extends BaseScraper {
             workType = detectWorkType(title, '', location);
           }
 
+          // Extract real publication date from the data
+          const dateRaw = item.date || item.createdAt || item.publishedAt || item.postedAt || item.created_at || '';
+          let postedAt: string | null = null;
+          if (dateRaw) {
+            const parsed = new Date(String(dateRaw));
+            if (!isNaN(parsed.getTime())) {
+              postedAt = parsed.toISOString();
+            }
+          }
+
           const job: Job = {
             id: generateJobId(url, title, company),
             title,
@@ -158,7 +168,7 @@ export class BestJobsScraper extends BaseScraper {
             url,
             source: this.name,
             salary: salary || undefined,
-            posted_at: new Date().toISOString(),
+            posted_at: postedAt,
             scraped_at: new Date().toISOString(),
             tags: extractTags(title, ''),
             is_active: true,
@@ -207,7 +217,7 @@ export class BestJobsScraper extends BaseScraper {
           description: title,
           url,
           source: this.name,
-          posted_at: new Date().toISOString(),
+          posted_at: null,
           scraped_at: new Date().toISOString(),
           tags: extractTags(title, ''),
           is_active: true,

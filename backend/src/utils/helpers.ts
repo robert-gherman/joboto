@@ -142,11 +142,11 @@ export function extractTags(title: string, description: string): string[] {
 
 /**
  * Normalize various date string formats to ISO 8601 string.
- * Returns current date if parsing fails.
+ * Returns null if parsing fails — callers should handle missing dates.
  */
-export function normalizeDate(dateStr: string): string {
+export function normalizeDate(dateStr: string): string | null {
   if (!dateStr || dateStr.trim() === '') {
-    return new Date().toISOString();
+    return null;
   }
 
   const cleaned = dateStr.trim().toLowerCase();
@@ -216,8 +216,8 @@ export function normalizeDate(dateStr: string): string {
     if (!isNaN(d.getTime())) return d.toISOString();
   }
 
-  // Fallback to current date
-  return new Date().toISOString();
+  // Could not parse — return null so callers know the date is unknown
+  return null;
 }
 
 /**

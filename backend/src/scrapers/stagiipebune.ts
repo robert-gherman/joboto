@@ -141,7 +141,7 @@ export class StagiiPeBuneScraper extends BaseScraper {
             description: title,
             url,
             source: this.name,
-            posted_at: new Date().toISOString(),
+            posted_at: null,
             scraped_at: new Date().toISOString(),
             tags: extractTags(title, ''),
             is_active: true,

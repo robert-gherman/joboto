@@ -49,7 +49,14 @@
       "Bash(cd D:/vsfile/joboto/backend && npx tsx -e \"\nimport { HipoScraper } from './src/scrapers/hipo';\nconst h = new HipoScraper\\(\\);\nh.scrape\\(\\).then\\(r => {\n  // Show first 10 job titles\n  r.jobs.slice\\(0, 15\\).forEach\\(j => console.log\\(j.title, '|', j.url.substring\\(0, 80\\)\\)\\);\n}\\);\n\" 2>&1 | grep -v '^\\\\[Hipo\\\\]')",
       "Bash(cd D:/vsfile/joboto/backend && npx tsx test-hipo.ts 2>&1 | grep -v '^\\\\[Hipo\\\\]')",
       "Bash(cd D:/vsfile/joboto/backend && npx tsc --noEmit 2>&1 && npx tsx test-hipo.ts 2>&1 | grep -v '^\\\\[Hipo\\\\]')",
-      "Bash(rm D:/vsfile/joboto/backend/test-scrape.ts D:/vsfile/joboto/backend/test-hipo.ts && cd D:/vsfile/joboto/backend && npx tsc --noEmit 2>&1)"
+      "Bash(rm D:/vsfile/joboto/backend/test-scrape.ts D:/vsfile/joboto/backend/test-hipo.ts && cd D:/vsfile/joboto/backend && npx tsc --noEmit 2>&1)",
+      "Bash(cd D:/vsfile/joboto/frontend && npx tsc --noEmit 2>&1 | head -20)",
+      "Bash(curl -s -A \"Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/120.0.0.0 Safari/537.36\" \"https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Romania&geoId=106670623&f_TPR=r86400\" 2>/dev/null | python3 -c \"\nimport sys, re\nhtml = sys.stdin.read\\(\\)\n# Find all time elements\ntimes = re.findall\\(r'<time[^>]*datetime=[\\\\\"']\\([^\\\\\"']*\\)[\\\\\"'][^>]*>\\([^<]*\\)</time>', html\\)\nprint\\(f'Found {len\\(times\\)} time elements'\\)\nfor t in times[:10]:\n    print\\(f'  datetime=\\\\\"{t[0]}\\\\\" text=\\\\\"{t[1].strip\\(\\)}\\\\\"'\\)\n\n# Also check for listdate spans\ndates = re.findall\\(r'class=[\\\\\"'][^\\\\\"']*listdate[^\\\\\"']*[\\\\\"'][^>]*>\\([^<]*\\)<', html\\)\nprint\\(f'\\\\nFound {len\\(dates\\)} listdate elements'\\)\nfor d in dates[:10]:\n    print\\(f'  \\\\\"{d.strip\\(\\)}\\\\\"'\\)\n\n# Count job cards\ncards = len\\(re.findall\\(r'base-card|job-search-card|base-search-card', html\\)\\)\nprint\\(f'\\\\nJob cards found: {cards}'\\)\n\" 2>/dev/null)",
+      "Bash(curl -s -A \"Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36\" \"https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Romania&geoId=106670623&f_TPR=r86400\" 2>/dev/null | grep -oP 'datetime=\"[^\"]*\"' | head -15)",
+      "Bash(curl -s -A \"Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36\" \"https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Romania&geoId=106670623&f_TPR=r86400\" 2>/dev/null | grep -c 'base-card')",
+      "Bash(node -e \"\nconst d = new Date\\('2026-03-12'\\);\nconsole.log\\('Parsed:', d.toISOString\\(\\)\\);\nconsole.log\\('Valid:', !isNaN\\(d.getTime\\(\\)\\)\\);\nconst today = new Date\\(\\); today.setHours\\(0,0,0,0\\);\nconsole.log\\('Today start:', today.toISOString\\(\\)\\);\nconsole.log\\('Is today or after:', d >= today\\);\n\")",
+      "Bash(cd D:/vsfile/joboto/frontend && npx tsc -b 2>&1 | head -30)",
+      "Bash(cd D:/vsfile/joboto/frontend && npx tsc -b 2>&1 | head -20)"
     ]
   }
 }

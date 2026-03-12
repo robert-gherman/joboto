@@ -124,7 +124,9 @@ export default function SavedJobs({ isOpen, onClose }: SavedJobsProps) {
                           {job.type}
                         </span>
                         <span className="text-[10px] text-text-muted">
-                          {formatDistanceToNow(new Date(job.posted_at), { addSuffix: true })}
+                          {job.posted_at
+                            ? formatDistanceToNow(new Date(job.posted_at), { addSuffix: true })
+                            : 'Date unknown'}
                         </span>
                       </div>
                     </div>

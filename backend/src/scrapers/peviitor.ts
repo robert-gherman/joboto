@@ -147,7 +147,13 @@ export class PeviitorScraper extends BaseScraper {
 
         // Date
         const dateStr = String(item.date || item.vdate || '');
-        const postedAt = dateStr ? new Date(dateStr).toISOString() : new Date().toISOString();
+        let postedAt: string | null = null;
+        if (dateStr) {
+          const parsed = new Date(dateStr);
+          if (!isNaN(parsed.getTime())) {
+            postedAt = parsed.toISOString();
+          }
+        }
 
         // Detect work type from API workmode field
         let workType: 'remote' | 'hybrid' | 'onsite' = 'onsite';

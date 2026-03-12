@@ -67,13 +67,11 @@ router.get('/jobs', async (req: Request, res: Response): Promise<void> => {
       query = query.contains('tags', filters.tags);
     }
 
-    // Sorting
+    // Sorting — nullsFirst: false pushes unknown dates to the end
     if (filters.sort_by === 'posted_at') {
-      query = query.order('posted_at', { ascending: false });
+      query = query.order('posted_at', { ascending: false, nullsFirst: false });
     } else {
-      // For relevance, sort by posted_at descending as fallback
-      // (true relevance scoring is handled in the recommendations endpoint)
-      query = query.order('posted_at', { ascending: false });
+      query = query.order('posted_at', { ascending: false, nullsFirst: false });
     }
 
     // Pagination
@@ -114,6 +112,7 @@ router.get('/jobs', async (req: Request, res: Response): Promise<void> => {
 /**
  * GET /api/jobs/stats
  * Aggregated statistics about the job listings.
+ * Fetches all rows in batches to avoid Supabase's 1000 row default limit.
  */
 router.get('/jobs/stats', async (_req: Request, res: Response): Promise<void> => {
   try {
@@ -123,52 +122,62 @@ router.get('/jobs/stats', async (_req: Request, res: Response): Promise<void> =>
       .select('*', { count: 'exact', head: true })
       .eq('is_active', true);
 
-    // Jobs by source
-    const { data: sourceData } = await supabase
-      .from('jobs')
-      .select('source')
-      .eq('is_active', true);
+    // Fetch all source/type/experience data in one query, paginated to avoid the 1000 row limit
+    const allRows: { source: string; type: string; experience_level: string; posted_at: string | null }[] = [];
+    const pageSize = 1000;
+    let offset = 0;
+    let hasMore = true;
 
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('jobs')
+        .select('source, type, experience_level, posted_at')
+        .eq('is_active', true)
+        .range(offset, offset + pageSize - 1);
+
+      if (error) {
+        console.error('Stats query error at offset', offset, error.message);
+        break;
+      }
+
+      if (data && data.length > 0) {
+        allRows.push(...data);
+        offset += data.length;
+        hasMore = data.length === pageSize;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    // Aggregate counts
     const bySource: Record<string, number> = {};
-    sourceData?.forEach(row => {
-      bySource[row.source] = (bySource[row.source] || 0) + 1;
-    });
-
-    // Jobs by type
-    const { data: typeData } = await supabase
-      .from('jobs')
-      .select('type')
-      .eq('is_active', true);
-
     const byType: Record<string, number> = {};
-    typeData?.forEach(row => {
-      byType[row.type] = (byType[row.type] || 0) + 1;
-    });
-
-    // Jobs by experience level
-    const { data: expData } = await supabase
-      .from('jobs')
-      .select('experience_level')
-      .eq('is_active', true);
-
     const byExperience: Record<string, number> = {};
-    expData?.forEach(row => {
-      byExperience[row.experience_level] = (byExperience[row.experience_level] || 0) + 1;
-    });
 
-    // New jobs today
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
+    const todayISO = todayStart.toISOString();
 
-    const { count: newToday } = await supabase
-      .from('jobs')
-      .select('*', { count: 'exact', head: true })
-      .eq('is_active', true)
-      .gte('scraped_at', todayStart.toISOString());
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    const weekISO = weekAgo.toISOString();
+
+    let newToday = 0;
+    let newThisWeek = 0;
+
+    for (const row of allRows) {
+      bySource[row.source] = (bySource[row.source] || 0) + 1;
+      byType[row.type] = (byType[row.type] || 0) + 1;
+      byExperience[row.experience_level] = (byExperience[row.experience_level] || 0) + 1;
+
+      if (row.posted_at && row.posted_at >= todayISO) newToday++;
+      if (row.posted_at && row.posted_at >= weekISO) newThisWeek++;
+    }
 
     res.json({
-      total_jobs: totalJobs || 0,
-      new_today: newToday || 0,
+      total_jobs: totalJobs || allRows.length,
+      new_today: newToday,
+      new_this_week: newThisWeek,
       by_source: bySource,
       by_type: byType,
       by_experience_level: byExperience,
@@ -298,19 +307,36 @@ router.get('/jobs/recommendations', async (req: Request, res: Response): Promise
  */
 router.get('/sources', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const { data, error } = await supabase
-      .from('jobs')
-      .select('source')
-      .eq('is_active', true);
+    // Fetch all sources with pagination to avoid 1000 row limit
+    const allSources: string[] = [];
+    const pageSize = 1000;
+    let offset = 0;
+    let hasMore = true;
 
-    if (error) {
-      res.status(500).json({ error: 'Failed to fetch sources', details: error.message });
-      return;
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('jobs')
+        .select('source')
+        .eq('is_active', true)
+        .range(offset, offset + pageSize - 1);
+
+      if (error) {
+        console.error('Sources query error:', error.message);
+        break;
+      }
+
+      if (data && data.length > 0) {
+        allSources.push(...data.map(row => row.source));
+        offset += data.length;
+        hasMore = data.length === pageSize;
+      } else {
+        hasMore = false;
+      }
     }
 
     const sourceCounts: Record<string, number> = {};
-    data?.forEach(row => {
-      sourceCounts[row.source] = (sourceCounts[row.source] || 0) + 1;
+    allSources.forEach(source => {
+      sourceCounts[source] = (sourceCounts[source] || 0) + 1;
     });
 
     const sources = Object.entries(sourceCounts)
