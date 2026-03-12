@@ -1,0 +1,75 @@
+-- Joboto - Supabase Schema
+-- Run this in your Supabase SQL editor to set up the database
+
+-- Jobs table
+CREATE TABLE IF NOT EXISTS jobs (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  company TEXT NOT NULL,
+  location TEXT NOT NULL DEFAULT 'Romania',
+  type TEXT NOT NULL CHECK (type IN ('remote', 'hybrid', 'onsite')),
+  experience_level TEXT NOT NULL CHECK (experience_level IN ('intern', 'junior', 'mid', 'senior', 'lead')),
+  description TEXT NOT NULL DEFAULT '',
+  url TEXT NOT NULL,
+  source TEXT NOT NULL,
+  salary TEXT,
+  posted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  scraped_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  tags TEXT[] NOT NULL DEFAULT '{}',
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Indexes for fast filtering
+CREATE INDEX IF NOT EXISTS idx_jobs_type ON jobs(type);
+CREATE INDEX IF NOT EXISTS idx_jobs_experience_level ON jobs(experience_level);
+CREATE INDEX IF NOT EXISTS idx_jobs_source ON jobs(source);
+CREATE INDEX IF NOT EXISTS idx_jobs_posted_at ON jobs(posted_at DESC);
+CREATE INDEX IF NOT EXISTS idx_jobs_is_active ON jobs(is_active);
+CREATE INDEX IF NOT EXISTS idx_jobs_tags ON jobs USING GIN(tags);
+CREATE INDEX IF NOT EXISTS idx_jobs_title_search ON jobs USING GIN(to_tsvector('english', title));
+CREATE INDEX IF NOT EXISTS idx_jobs_company ON jobs(company);
+
+-- Full text search index
+CREATE INDEX IF NOT EXISTS idx_jobs_fts ON jobs USING GIN(
+  to_tsvector('english', title || ' ' || company || ' ' || description)
+);
+
+-- Auto-update updated_at
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+CREATE TRIGGER update_jobs_updated_at
+  BEFORE UPDATE ON jobs
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable Row Level Security (allow public read)
+ALTER TABLE jobs ENABLE ROW LEVEL SECURITY;
+
+-- Allow anyone to read jobs
+CREATE POLICY "Jobs are publicly readable"
+  ON jobs FOR SELECT
+  USING (true);
+
+-- Allow service role to insert/update/delete
+CREATE POLICY "Service role can manage jobs"
+  ON jobs FOR ALL
+  USING (auth.role() = 'service_role')
+  WITH CHECK (auth.role() = 'service_role');
+
+-- Allow anon to insert/update (for scraping with anon key)
+CREATE POLICY "Anon can insert jobs"
+  ON jobs FOR INSERT
+  WITH CHECK (true);
+
+CREATE POLICY "Anon can update jobs"
+  ON jobs FOR UPDATE
+  USING (true)
+  WITH CHECK (true);
