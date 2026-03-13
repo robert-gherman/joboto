@@ -56,7 +56,8 @@
       "Bash(curl -s -A \"Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36\" \"https://www.linkedin.com/jobs/search/?keywords=frontend+developer&location=Romania&geoId=106670623&f_TPR=r86400\" 2>/dev/null | grep -c 'base-card')",
       "Bash(node -e \"\nconst d = new Date\\('2026-03-12'\\);\nconsole.log\\('Parsed:', d.toISOString\\(\\)\\);\nconsole.log\\('Valid:', !isNaN\\(d.getTime\\(\\)\\)\\);\nconst today = new Date\\(\\); today.setHours\\(0,0,0,0\\);\nconsole.log\\('Today start:', today.toISOString\\(\\)\\);\nconsole.log\\('Is today or after:', d >= today\\);\n\")",
       "Bash(cd D:/vsfile/joboto/frontend && npx tsc -b 2>&1 | head -30)",
-      "Bash(cd D:/vsfile/joboto/frontend && npx tsc -b 2>&1 | head -20)"
+      "Bash(cd D:/vsfile/joboto/frontend && npx tsc -b 2>&1 | head -20)",
+      "Bash(cd D:/vsfile/joboto/frontend && npx tsc -b 2>&1 | head -10)"
     ]
   }
 }

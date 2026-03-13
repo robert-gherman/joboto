@@ -5,6 +5,7 @@ import { useDebounce } from '../hooks/useDebounce';
 import SearchBar from '../components/SearchBar';
 import FilterSidebar from '../components/FilterSidebar';
 import JobList from '../components/JobList';
+import LiveJobFeed from '../components/LiveJobFeed';
 
 export default function HomePage() {
   const { filters, stats, fetchJobs, fetchStats, fetchSources } = useJobStore();
@@ -92,6 +93,11 @@ export default function HomePage() {
             </div>
           </div>
         </div>
+      </section>
+
+      {/* Live Job Feed */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+        <LiveJobFeed />
       </section>
 
       {/* Main Content */}

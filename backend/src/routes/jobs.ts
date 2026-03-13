@@ -377,6 +377,51 @@ router.get('/jobs/:id', async (req: Request, res: Response): Promise<void> => {
 });
 
 /**
+ * GET /api/jobs/recent
+ * Fetch jobs posted within the last N minutes.
+ * Used by the live notification feed to detect fresh listings.
+ */
+router.get('/jobs/recent', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const minutes = Math.min(1440, Math.max(1, parseInt(req.query.minutes as string, 10) || 30));
+    const since = req.query.since as string | undefined;
+
+    const cutoff = new Date(Date.now() - minutes * 60 * 1000).toISOString();
+
+    let query = supabase
+      .from('jobs')
+      .select('*', { count: 'exact' })
+      .eq('is_active', true)
+      .gte('posted_at', cutoff)
+      .order('posted_at', { ascending: false, nullsFirst: false })
+      .limit(50);
+
+    // If "since" is provided, only return jobs newer than that timestamp
+    // This lets the frontend ask "what's new since my last check?"
+    if (since) {
+      query = query.gt('posted_at', since);
+    }
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      res.status(500).json({ error: 'Failed to fetch recent jobs', details: error.message });
+      return;
+    }
+
+    res.json({
+      jobs: data || [],
+      count: count || (data?.length ?? 0),
+      since: since || cutoff,
+      checked_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('GET /api/jobs/recent error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * POST /api/jobs/scrape
  * Trigger a manual scrape. For dev/admin use.
  */

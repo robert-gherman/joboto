@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Briefcase, BarChart3, Sparkles, Menu, X, Heart } from 'lucide-react';
+import { Briefcase, BarChart3, Sparkles, Menu, X, Heart, Radio } from 'lucide-react';
 import { useJobStore } from '../store/jobStore';
 import SavedJobs from './SavedJobs';
 
@@ -10,12 +10,29 @@ const navLinks = [
   { to: '/stats', label: 'Stats', icon: BarChart3 },
 ];
 
+// Listen for new job events from LiveJobFeed
+function useNewJobCount() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setCount(detail?.count || 0);
+    };
+    window.addEventListener('joboto-new-jobs', handler);
+    return () => window.removeEventListener('joboto-new-jobs', handler);
+  }, []);
+
+  return count;
+}
+
 export default function Navbar() {
   const location = useLocation();
   const totalJobs = useJobStore((s) => s.totalJobs);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [savedJobsOpen, setSavedJobsOpen] = useState(false);
   const [savedCount, setSavedCount] = useState(0);
+  const newJobCount = useNewJobCount();
 
   useEffect(() => {
     const updateSavedCount = () => {
@@ -88,6 +105,18 @@ export default function Navbar() {
                     {totalJobs.toLocaleString()} jobs
                   </span>
                 </div>
+              )}
+
+              {/* Live feed indicator */}
+              {newJobCount > 0 && (
+                <Link
+                  to="/"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-danger/10 border border-danger/20 animate-scale-in"
+                  title="New jobs just posted!"
+                >
+                  <Radio className="w-3.5 h-3.5 text-danger" />
+                  <span className="text-xs font-bold text-danger">+{newJobCount}</span>
+                </Link>
               )}
 
               {/* Saved jobs button */}

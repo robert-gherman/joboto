@@ -73,6 +73,22 @@ export async function fetchJobRecommendations(query: string): Promise<Job[]> {
   return raw.recommendations || raw || [];
 }
 
+// Recent jobs (for live feed)
+export async function fetchRecentJobs(
+  minutes: number = 30,
+  since?: string
+): Promise<{ jobs: Job[]; count: number; since: string; checked_at: string }> {
+  const params: Record<string, string | number> = { minutes };
+  if (since) params.since = since;
+  const { data } = await api.get('/jobs/recent', { params });
+  return {
+    jobs: data.jobs || [],
+    count: data.count || 0,
+    since: data.since || '',
+    checked_at: data.checked_at || new Date().toISOString(),
+  };
+}
+
 // Sources
 export async function fetchSources(): Promise<string[]> {
   const { data: raw } = await api.get('/sources');
