@@ -1,11 +1,17 @@
-import { useEffect, useState } from 'react';
-import { Briefcase, Zap, Globe, Database, SlidersHorizontal } from 'lucide-react';
-import { useJobStore } from '../store/jobStore';
-import { useDebounce } from '../hooks/useDebounce';
-import SearchBar from '../components/SearchBar';
-import FilterSidebar from '../components/FilterSidebar';
-import JobList from '../components/JobList';
-import LiveJobFeed from '../components/LiveJobFeed';
+import { useEffect, useState } from "react";
+import {
+  Briefcase,
+  Zap,
+  Globe,
+  Database,
+  SlidersHorizontal,
+} from "lucide-react";
+import { useJobStore } from "../store/jobStore";
+import { useDebounce } from "../hooks/useDebounce";
+import SearchBar from "../components/SearchBar";
+import FilterSidebar from "../components/FilterSidebar";
+import JobList from "../components/JobList";
+import LiveJobFeed from "../components/LiveJobFeed";
 
 export default function HomePage() {
   const { filters, stats, fetchJobs, fetchStats, fetchSources } = useJobStore();
@@ -28,22 +34,22 @@ export default function HomePage() {
     {
       icon: <Briefcase className="w-5 h-5" />,
       value: stats?.total || 0,
-      label: 'Total Jobs',
+      label: "Total Jobs",
     },
     {
       icon: <Zap className="w-5 h-5" />,
       value: stats?.new_today || 0,
-      label: 'New Today',
+      label: "New Today",
     },
     {
       icon: <Globe className="w-5 h-5" />,
       value: stats?.by_type?.remote || 0,
-      label: 'Remote Jobs',
+      label: "Remote Jobs",
     },
     {
       icon: <Database className="w-5 h-5" />,
       value: stats ? Object.keys(stats.by_source).length : 0,
-      label: 'Sources',
+      label: "Sources",
     },
   ];
 
@@ -58,14 +64,14 @@ export default function HomePage() {
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 pb-10">
           <div className="text-center max-w-3xl mx-auto">
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary leading-tight animate-fade-in">
-              Find Your Dream{' '}
+              Find{" "}
               <span className="bg-gradient-to-r from-primary-light to-accent-light bg-clip-text text-transparent">
-                Frontend Job
-              </span>{' '}
+                Frontend Jobs
+              </span>{" "}
               in Romania
             </h1>
             <p className="mt-4 text-base sm:text-lg text-text-secondary animate-fade-in max-w-2xl mx-auto">
-              AI-powered job aggregator scanning 12+ sources. Updated every 30 minutes.
+              Job aggregator scanning 12+ sources. Updated every 30 minutes.
             </p>
 
             {/* Search */}

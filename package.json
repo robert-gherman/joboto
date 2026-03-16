@@ -1,7 +1,7 @@
 {
   "name": "joboto",
   "version": "1.0.0",
-  "description": "AI-powered job aggregator for Frontend/React/JS jobs in Romania",
+  "description": "Job aggregator for Frontend/React/JS jobs in Romania",
   "private": true,
   "scripts": {
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",

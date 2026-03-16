@@ -1,4 +1,4 @@
-import axios, { AxiosRequestConfig } from 'axios';
+import axios, { AxiosRequestConfig, AxiosError } from 'axios';
 import { ScraperResult } from '../types';
 import { delay } from '../utils/helpers';
 
@@ -11,28 +11,63 @@ const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0',
 ];
 
+// Global circuit breaker: tracks blocked domains to avoid hammering them
+const blockedDomains = new Map<string, number>(); // domain -> unblock timestamp
+const BLOCK_DURATION = 60 * 60 * 1000; // 1 hour cooldown after 403/429
+
+function getDomain(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
+export function isDomainBlocked(url: string): boolean {
+  const domain = getDomain(url);
+  const unblockAt = blockedDomains.get(domain);
+  if (!unblockAt) return false;
+  if (Date.now() >= unblockAt) {
+    blockedDomains.delete(domain);
+    return false;
+  }
+  return true;
+}
+
+function blockDomain(url: string): void {
+  const domain = getDomain(url);
+  blockedDomains.set(domain, Date.now() + BLOCK_DURATION);
+  console.warn(`[CircuitBreaker] Blocked ${domain} for 1 hour due to rate limiting`);
+}
+
 export abstract class BaseScraper {
   abstract name: string;
   abstract baseUrl: string;
 
   /** Maximum number of retries for a failed request */
-  protected maxRetries: number = 3;
+  protected maxRetries: number = 2;
 
   /** Delay between retries in milliseconds */
-  protected retryDelay: number = 2000;
+  protected retryDelay: number = 3000;
 
   /** Request timeout in milliseconds */
   protected timeout: number = 15000;
 
   /** Delay between consecutive page fetches to be respectful */
-  protected crawlDelay: number = 1500;
+  protected crawlDelay: number = 2000;
 
   abstract scrape(): Promise<ScraperResult>;
 
   /**
-   * Fetch a page with user-agent rotation, timeout, and retry logic.
+   * Fetch a page with user-agent rotation, timeout, retry logic,
+   * and circuit breaker for rate-limited domains.
    */
   protected async fetchPage(url: string, config?: AxiosRequestConfig): Promise<string> {
+    // Circuit breaker: skip if domain is blocked
+    if (isDomainBlocked(url)) {
+      throw new Error(`Domain ${getDomain(url)} is temporarily blocked (rate limited)`);
+    }
+
     let lastError: Error | null = null;
 
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
@@ -61,6 +96,15 @@ export abstract class BaseScraper {
       } catch (error: unknown) {
         const err = error instanceof Error ? error : new Error(String(error));
         lastError = err;
+
+        // Check for rate limiting (429) or forbidden (403) — trip the circuit breaker
+        const axiosErr = error as AxiosError;
+        const status = axiosErr?.response?.status;
+        if (status === 429 || status === 403) {
+          blockDomain(url);
+          throw new Error(`${getDomain(url)} returned ${status} — domain blocked for 1 hour`);
+        }
+
         console.warn(
           `[${this.name}] Fetch attempt ${attempt}/${this.maxRetries} failed for ${url}: ${err.message}`
         );

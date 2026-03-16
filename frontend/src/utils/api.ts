@@ -74,12 +74,14 @@ export async function fetchJobRecommendations(query: string): Promise<Job[]> {
 }
 
 // Recent jobs (for live feed)
+// Initial load: jobs added to DB in the last `minutes` (default 15)
+// Polling: jobs added since `since` timestamp
 export async function fetchRecentJobs(
-  minutes: number = 30,
-  since?: string
+  options: { minutes?: number; since?: string } = {}
 ): Promise<{ jobs: Job[]; count: number; since: string; checked_at: string }> {
-  const params: Record<string, string | number> = { minutes };
-  if (since) params.since = since;
+  const params: Record<string, string | number> = {};
+  if (options.since) params.since = options.since;
+  if (options.minutes) params.minutes = options.minutes;
   const { data } = await api.get('/jobs/recent', { params });
   return {
     jobs: data.jobs || [],
@@ -87,6 +89,20 @@ export async function fetchRecentJobs(
     since: data.since || '',
     checked_at: data.checked_at || new Date().toISOString(),
   };
+}
+
+// Email notifications
+export async function sendEmailAlert(jobIds: string[]): Promise<{ sent: boolean }> {
+  const { data } = await api.post('/notifications/email', { job_ids: jobIds });
+  return data;
+}
+
+export async function getNotificationStatus(): Promise<{
+  email_enabled: boolean;
+  email_to: string | null;
+}> {
+  const { data } = await api.get('/notifications/status');
+  return data;
 }
 
 // Sources

@@ -91,8 +91,11 @@ export class LinkedInScraper extends BaseScraper {
       let successCount = 0;
       let failCount = 0;
 
-      // Scrape all URL groups: today first, then week, then month
-      const allUrls = [...this.todayUrls, ...this.weekUrls, ...this.monthUrls];
+      // Today + week first (priority), then a small sample of month URLs
+      // to catch older-but-still-active listings without wasting requests.
+      // Month URLs are trimmed — only top 5 to reduce rate-limit risk.
+      const monthSample = this.monthUrls.slice(0, 5);
+      const allUrls = [...this.todayUrls, ...this.weekUrls, ...monthSample];
 
       for (const searchUrl of allUrls) {
         try {
@@ -103,13 +106,13 @@ export class LinkedInScraper extends BaseScraper {
           if (jobs.length > 0) {
             this.log(`Found ${jobs.length} jobs from search`);
           }
-          // Delay to avoid rate limiting
-          await delay(2000 + Math.random() * 1500);
+          // Delay to avoid rate limiting — LinkedIn is aggressive about blocking
+          await delay(3000 + Math.random() * 3000);
         } catch (err) {
           failCount++;
           this.logError(`Failed to scrape search URL`, err);
           // On failure wait longer to avoid rate limit
-          await delay(5000 + Math.random() * 3000);
+          await delay(8000 + Math.random() * 5000);
         }
       }
 

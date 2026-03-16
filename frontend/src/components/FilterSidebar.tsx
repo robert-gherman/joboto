@@ -84,6 +84,7 @@ function FilterSection({
 
 export default function FilterSidebar({ mobileOpen, onMobileClose }: FilterSidebarProps) {
   const { filters, setFilter, resetFilters, fetchJobs, sources, stats } = useJobStore();
+  const [activeDateOption, setActiveDateOption] = useState(filters.posted_after ? '' : '');
 
   useEffect(() => {
     if (mobileOpen) {
@@ -124,18 +125,9 @@ export default function FilterSidebar({ mobileOpen, onMobileClose }: FilterSideb
   };
 
   const handleDateChange = (option: string) => {
+    setActiveDateOption(option);
     setFilter('posted_after', getDateValue(option));
     fetchJobs();
-  };
-
-  const getCurrentDateOption = () => {
-    if (!filters.posted_after) return '';
-    const diff = Date.now() - new Date(filters.posted_after).getTime();
-    const hours = diff / (1000 * 60 * 60);
-    if (hours <= 24) return 'today';
-    if (hours <= 72) return '3days';
-    if (hours <= 168) return 'week';
-    return 'month';
   };
 
   const handleTagToggle = (tag: string) => {
@@ -149,6 +141,7 @@ export default function FilterSidebar({ mobileOpen, onMobileClose }: FilterSideb
   };
 
   const handleReset = () => {
+    setActiveDateOption('');
     resetFilters();
     fetchJobs();
   };
@@ -247,7 +240,7 @@ export default function FilterSidebar({ mobileOpen, onMobileClose }: FilterSideb
       <FilterSection title="Date Posted">
         <div className="space-y-1">
           {dateOptions.map((opt) => {
-            const isActive = getCurrentDateOption() === opt.value;
+            const isActive = activeDateOption === opt.value;
             return (
               <button
                 key={opt.value}

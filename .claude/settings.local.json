@@ -57,7 +57,19 @@
       "Bash(node -e \"\nconst d = new Date\\('2026-03-12'\\);\nconsole.log\\('Parsed:', d.toISOString\\(\\)\\);\nconsole.log\\('Valid:', !isNaN\\(d.getTime\\(\\)\\)\\);\nconst today = new Date\\(\\); today.setHours\\(0,0,0,0\\);\nconsole.log\\('Today start:', today.toISOString\\(\\)\\);\nconsole.log\\('Is today or after:', d >= today\\);\n\")",
       "Bash(cd D:/vsfile/joboto/frontend && npx tsc -b 2>&1 | head -30)",
       "Bash(cd D:/vsfile/joboto/frontend && npx tsc -b 2>&1 | head -20)",
-      "Bash(cd D:/vsfile/joboto/frontend && npx tsc -b 2>&1 | head -10)"
+      "Bash(cd D:/vsfile/joboto/frontend && npx tsc -b 2>&1 | head -10)",
+      "Bash(cd D:/vsfile/joboto/backend && npm install nodemailer && npm install -D @types/nodemailer 2>&1 | tail -5)",
+      "Bash(find \"D:\\\\vsfile\\\\joboto\\\\backend\\\\src\\\\scrapers\\\\\" -type f -name \"*.ts\" | head -20)",
+      "WebFetch(domain:www.jobradar24.ro)",
+      "WebFetch(domain:www.undelucram.ro)",
+      "WebFetch(domain:cariere.ro)",
+      "WebFetch(domain:jobradar24.ro)",
+      "WebSearch",
+      "WebFetch(domain:www.google.com)",
+      "WebFetch(domain:www.similarweb.com)",
+      "WebFetch(domain:www.trustpilot.com)",
+      "WebFetch(domain:hypestat.com)",
+      "WebFetch(domain:web.archive.org)"
     ]
   }
 }

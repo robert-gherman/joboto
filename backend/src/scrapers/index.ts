@@ -1,6 +1,6 @@
 import { Job, ScraperResult } from '../types';
 import { upsertJobs } from '../utils/supabase';
-import { generateJobId } from '../utils/helpers';
+import { generateJobId, delay } from '../utils/helpers';
 
 // === Priority 1: LinkedIn (broadest reach, verified working) ===
 import { LinkedInScraper } from './linkedin';
@@ -19,6 +19,10 @@ import { DevJobScraper } from './devjob';
 import { IndeedScraper } from './indeed';
 import { GlassdoorScraper } from './glassdoor';
 
+// === Priority 5: Additional Romanian boards ===
+import { CariereScraper } from './cariere';
+import { UndeLucramScraper } from './undelucram';
+
 // === Lower priority: Remote/international boards ===
 import { WeWorkRemotelyScraper } from './weworkremotely';
 import { RedditScraper } from './reddit';
@@ -31,6 +35,7 @@ import { RemoteOKScraper } from './remoteok';
 // - MyJob.ro: mostly labor jobs, not tech
 // - OLX.ro: 403 blocked by Cloudflare
 // - StackOverflow Jobs: 403 blocked
+// - JobRadar24.ro: WAF-blocked, requires headless browser
 
 import { BaseScraper } from './base-scraper';
 
@@ -49,6 +54,10 @@ export const scrapers: BaseScraper[] = [
   // May work with retries (block sometimes)
   new EJobsScraper(),          // Largest Romanian board, may block
   new DevJobScraper(),         // Romanian dev board, SPA (limited)
+
+  // Additional Romanian boards
+  new CariereScraper(),        // WordPress SSR, easy parse
+  new UndeLucramScraper(),     // Employer reviews + jobs, AJAX
 
   // International (often blocked but worth trying)
   new IndeedScraper(),
@@ -77,33 +86,37 @@ export async function runAllScrapers(): Promise<AggregatedResult> {
   console.log(`Running ${scrapers.length} scrapers...`);
   console.log(`========================================\n`);
 
-  const settledResults = await Promise.allSettled(
-    scrapers.map(scraper => scraper.scrape())
-  );
-
+  // Run scrapers SEQUENTIALLY with a gap between each to avoid
+  // burst traffic that looks like a bot attack from a single IP
   const results: ScraperResult[] = [];
   const allJobs: Job[] = [];
 
-  for (let i = 0; i < settledResults.length; i++) {
-    const settled = settledResults[i];
-    const scraperName = scrapers[i].name;
+  for (let i = 0; i < scrapers.length; i++) {
+    const scraper = scrapers[i];
+    const scraperName = scraper.name;
 
-    if (settled.status === 'fulfilled') {
-      results.push(settled.value);
-      if (settled.value.success) {
-        allJobs.push(...settled.value.jobs);
-        console.log(`[${scraperName}] Success: ${settled.value.jobs.length} jobs`);
+    try {
+      const result = await scraper.scrape();
+      results.push(result);
+      if (result.success) {
+        allJobs.push(...result.jobs);
+        console.log(`[${scraperName}] Success: ${result.jobs.length} jobs`);
       } else {
-        console.warn(`[${scraperName}] Failed: ${settled.value.error}`);
+        console.warn(`[${scraperName}] Failed: ${result.error}`);
       }
-    } else {
-      console.error(`[${scraperName}] Rejected: ${settled.reason}`);
+    } catch (err) {
+      console.error(`[${scraperName}] Rejected: ${err}`);
       results.push({
         jobs: [],
         source: scraperName,
         success: false,
-        error: String(settled.reason),
+        error: String(err),
       });
+    }
+
+    // Wait 3-5s between scrapers so requests are spread out
+    if (i < scrapers.length - 1) {
+      await delay(3000 + Math.random() * 2000);
     }
   }
 
@@ -116,8 +129,25 @@ export async function runAllScrapers(): Promise<AggregatedResult> {
     return true;
   });
 
+  // Drop jobs older than 2 months — no point storing stale listings
+  const TWO_MONTHS_AGO = new Date();
+  TWO_MONTHS_AGO.setMonth(TWO_MONTHS_AGO.getMonth() - 2);
+  const twoMonthsCutoff = TWO_MONTHS_AGO.getTime();
+
+  const freshJobs = uniqueJobs.filter(job => {
+    if (!job.posted_at) return true; // Keep jobs with unknown dates (they might be recent)
+    const postedTime = new Date(job.posted_at).getTime();
+    if (isNaN(postedTime)) return true;
+    return postedTime >= twoMonthsCutoff;
+  });
+
+  const droppedCount = uniqueJobs.length - freshJobs.length;
+  if (droppedCount > 0) {
+    console.log(`Dropped ${droppedCount} jobs older than 2 months`);
+  }
+
   // Ensure all jobs have IDs
-  const jobsWithIds = uniqueJobs.map(job => ({
+  const jobsWithIds = freshJobs.map(job => ({
     ...job,
     id: job.id || generateJobId(job.url, job.title, job.company),
   }));
@@ -134,12 +164,12 @@ export async function runAllScrapers(): Promise<AggregatedResult> {
   const duration = Date.now() - startTime;
   console.log(`\n========================================`);
   console.log(`Scrape run completed in ${(duration / 1000).toFixed(1)}s`);
-  console.log(`Total unique jobs found: ${uniqueJobs.length}`);
+  console.log(`Total unique jobs found: ${uniqueJobs.length} (${freshJobs.length} within 2 months)`);
   console.log(`Jobs stored in database: ${newJobs}`);
   console.log(`========================================\n`);
 
   return {
-    totalJobs: uniqueJobs.length,
+    totalJobs: freshJobs.length,
     newJobs,
     results,
     duration,

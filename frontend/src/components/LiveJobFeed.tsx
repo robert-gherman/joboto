@@ -12,13 +12,15 @@ import {
   Zap,
   Volume2,
   VolumeX,
+  Mail,
+  MailX,
+  Loader2,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { Job } from '../types';
-import { fetchRecentJobs } from '../utils/api';
+import { fetchRecentJobs, sendEmailAlert, getNotificationStatus } from '../utils/api';
 
 const POLL_INTERVAL = 2 * 60 * 1000; // 2 minutes
-const RECENT_WINDOW_MINUTES = 60; // Show jobs from last hour
 
 const typeStyles: Record<string, string> = {
   remote: 'bg-success/10 text-success border-success/20',
@@ -41,10 +43,24 @@ export default function LiveJobFeed() {
   const [expanded, setExpanded] = useState(true);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [emailEnabled, setEmailEnabled] = useState(false);
+  const [emailConfigured, setEmailConfigured] = useState(false);
+  const [emailTo, setEmailTo] = useState<string | null>(null);
+  const [emailSending, setEmailSending] = useState(false);
   const [lastCheck, setLastCheck] = useState<string | null>(null);
   const [newCount, setNewCount] = useState(0);
   const seenJobIds = useRef<Set<string>>(new Set());
   const isFirstLoad = useRef(true);
+
+  // Check if email is configured on the backend
+  useEffect(() => {
+    getNotificationStatus()
+      .then((status) => {
+        setEmailConfigured(status.email_enabled);
+        setEmailTo(status.email_to);
+      })
+      .catch(() => setEmailConfigured(false));
+  }, []);
 
   // Create a simple notification sound using AudioContext
   const playNotificationSound = useCallback(() => {
@@ -81,6 +97,29 @@ export default function LiveJobFeed() {
     }
   };
 
+  const toggleEmail = () => {
+    if (!emailConfigured) return;
+    const next = !emailEnabled;
+    setEmailEnabled(next);
+    localStorage.setItem('joboto-email', String(next));
+  };
+
+  // Send email alert for new jobs
+  const sendEmailForJobs = useCallback(
+    async (jobs: Job[]) => {
+      if (!emailEnabled || !emailConfigured || jobs.length === 0) return;
+      setEmailSending(true);
+      try {
+        await sendEmailAlert(jobs.map((j) => j.id));
+      } catch (err) {
+        console.error('Failed to send email alert:', err);
+      } finally {
+        setEmailSending(false);
+      }
+    },
+    [emailEnabled, emailConfigured]
+  );
+
   // Send browser notification
   const sendNotification = useCallback(
     (jobs: Job[]) => {
@@ -115,11 +154,14 @@ export default function LiveJobFeed() {
   );
 
   // Fetch recent jobs
+  // First call: jobs added to DB in the last 15 minutes
+  // Subsequent calls: jobs added since last check
   const checkForNewJobs = useCallback(async () => {
     try {
       const result = await fetchRecentJobs(
-        RECENT_WINDOW_MINUTES,
-        isFirstLoad.current ? undefined : lastCheck || undefined
+        isFirstLoad.current
+          ? { minutes: 15 }
+          : { since: lastCheck || undefined }
       );
 
       if (isFirstLoad.current) {
@@ -147,16 +189,21 @@ export default function LiveJobFeed() {
             const merged = [...brandNewJobs, ...prev];
             // Keep only unique, max 50
             const seen = new Set<string>();
-            return merged.filter((j) => {
-              if (seen.has(j.id)) return false;
-              seen.add(j.id);
-              return true;
-            }).slice(0, 50);
+            return merged
+              .filter((j) => {
+                if (seen.has(j.id)) return false;
+                seen.add(j.id);
+                return true;
+              })
+              .slice(0, 50);
           });
 
-          // Notify
+          // Browser notification + sound
           sendNotification(brandNewJobs);
           playNotificationSound();
+
+          // Email alert
+          sendEmailForJobs(brandNewJobs);
 
           // Dispatch event for Navbar badge
           window.dispatchEvent(
@@ -176,7 +223,7 @@ export default function LiveJobFeed() {
     } finally {
       setLoading(false);
     }
-  }, [lastCheck, sendNotification, playNotificationSound]);
+  }, [lastCheck, sendNotification, playNotificationSound, sendEmailForJobs]);
 
   // Initial fetch + polling
   useEffect(() => {
@@ -195,7 +242,7 @@ export default function LiveJobFeed() {
     return () => clearTimeout(timeout);
   }, [newJobIds]);
 
-  // Load notification preference from localStorage
+  // Load preferences from localStorage
   useEffect(() => {
     const pref = localStorage.getItem('joboto-notifications');
     if (pref === 'true' && 'Notification' in window && Notification.permission === 'granted') {
@@ -203,6 +250,8 @@ export default function LiveJobFeed() {
     }
     const soundPref = localStorage.getItem('joboto-sound');
     if (soundPref === 'false') setSoundEnabled(false);
+    const emailPref = localStorage.getItem('joboto-email');
+    if (emailPref === 'true') setEmailEnabled(true);
   }, []);
 
   // Persist preferences
@@ -248,7 +297,36 @@ export default function LiveJobFeed() {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          {/* Email toggle */}
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleEmail();
+            }}
+            className={`p-1.5 rounded-lg transition-all duration-200 cursor-pointer ${
+              !emailConfigured
+                ? 'text-text-muted/40 cursor-not-allowed'
+                : emailEnabled
+                  ? 'text-success bg-success/10'
+                  : 'text-text-muted hover:text-text-primary hover:bg-surface-lighter/30'
+            }`}
+            title={
+              !emailConfigured
+                ? 'Email not configured — set Gmail App Password in .env'
+                : emailEnabled
+                  ? `Email alerts on (${emailTo})`
+                  : 'Enable email alerts'
+            }
+          >
+            {emailSending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : emailEnabled ? (
+              <Mail className="w-4 h-4" />
+            ) : (
+              <MailX className="w-4 h-4" />
+            )}
+          </div>
           {/* Notification toggle */}
           <div
             onClick={(e) => {
@@ -295,15 +373,26 @@ export default function LiveJobFeed() {
         </div>
       </button>
 
+      {/* Email status banner */}
+      {expanded && emailEnabled && emailConfigured && (
+        <div className="px-4 py-2 bg-success/5 border-t border-success/10 flex items-center gap-2">
+          <Mail className="w-3.5 h-3.5 text-success" />
+          <span className="text-[11px] text-success">
+            Email alerts active — new jobs will be sent to{' '}
+            <span className="font-medium">{emailTo}</span>
+          </span>
+        </div>
+      )}
+
       {/* Job list */}
       {expanded && (
         <div className="border-t border-border">
           {recentJobs.length === 0 ? (
             <div className="p-6 text-center">
               <Zap className="w-8 h-8 text-text-muted mx-auto mb-2" />
-              <p className="text-sm text-text-secondary">No jobs posted in the last hour</p>
+              <p className="text-sm text-text-secondary">No new jobs in the last 15 minutes</p>
               <p className="text-xs text-text-muted mt-1">
-                Checking every 2 minutes for new listings
+                Checking every 2 minutes — you'll be notified when new listings appear
               </p>
             </div>
           ) : (
