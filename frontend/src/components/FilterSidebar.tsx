@@ -151,7 +151,8 @@ export default function FilterSidebar({ mobileOpen, onMobileClose }: FilterSideb
     filters.experience_level ||
     filters.posted_after ||
     filters.source ||
-    filters.tags.length > 0;
+    filters.tags.length > 0 ||
+    filters.hide_duplicates;
 
   const sidebarContent = (
     <div className="space-y-4">
@@ -170,6 +171,35 @@ export default function FilterSidebar({ mobileOpen, onMobileClose }: FilterSideb
             Reset
           </button>
         )}
+      </div>
+
+      {/* Hide Duplicates */}
+      <div className="border-b border-border pb-4">
+        <button
+          onClick={() => {
+            setFilter('hide_duplicates', !filters.hide_duplicates);
+            fetchJobs();
+          }}
+          className="w-full flex items-center justify-between py-2 group"
+        >
+          <span className="text-sm font-semibold text-text-primary group-hover:text-primary-light transition-colors duration-200">
+            Hide Duplicates
+          </span>
+          <div
+            className={`relative w-9 h-5 rounded-full transition-colors duration-200 ${
+              filters.hide_duplicates ? 'bg-primary' : 'bg-surface-lighter'
+            }`}
+          >
+            <div
+              className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${
+                filters.hide_duplicates ? 'translate-x-4' : 'translate-x-0'
+              }`}
+            />
+          </div>
+        </button>
+        <p className="text-xs text-text-muted mt-1">
+          Filter out jobs with the same title &amp; company
+        </p>
       </div>
 
       {/* Work Type */}

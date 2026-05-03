@@ -23,6 +23,7 @@ export interface JobFilters {
   posted_after: string;
   tags: string[];
   sort_by: 'posted_at' | 'relevance';
+  hide_duplicates: boolean;
 }
 
 export interface JobStats {

@@ -160,7 +160,7 @@ export default function LiveJobFeed() {
     try {
       const result = await fetchRecentJobs(
         isFirstLoad.current
-          ? { minutes: 15 }
+          ? { minutes: 240 }
           : { since: lastCheck || undefined }
       );
 
@@ -390,7 +390,7 @@ export default function LiveJobFeed() {
           {recentJobs.length === 0 ? (
             <div className="p-6 text-center">
               <Zap className="w-8 h-8 text-text-muted mx-auto mb-2" />
-              <p className="text-sm text-text-secondary">No new jobs in the last 15 minutes</p>
+              <p className="text-sm text-text-secondary">No new jobs in the last few hours</p>
               <p className="text-xs text-text-muted mt-1">
                 Checking every 2 minutes — you'll be notified when new listings appear
               </p>

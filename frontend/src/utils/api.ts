@@ -32,6 +32,7 @@ export async function fetchJobs(
   if (filters.page) params.page = filters.page;
   if (filters.limit) params.limit = filters.limit;
   if (filters.sort_by) params.sort_by = filters.sort_by;
+  if (filters.hide_duplicates) params.hide_duplicates = 'true';
 
   const { data: raw } = await api.get('/jobs', { params });
 

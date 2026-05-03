@@ -30,6 +30,7 @@ const defaultFilters: JobFilters = {
   posted_after: '',
   tags: [],
   sort_by: 'posted_at',
+  hide_duplicates: false,
 };
 
 export const useJobStore = create<JobStore>((set, get) => ({

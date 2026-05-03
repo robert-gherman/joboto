@@ -32,4 +32,5 @@ export interface JobFilters {
   page?: number;
   limit?: number;
   sort_by?: 'posted_at' | 'relevance';
+  hide_duplicates?: boolean;
 }

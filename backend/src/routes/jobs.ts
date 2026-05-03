@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
 import supabase from '../utils/supabase';
-import { JobFilters } from '../types';
+import { JobFilters, Job } from '../types';
 import { runAllScrapers } from '../scrapers';
+import { sendNewJobsEmail } from '../utils/email';
 
 const router = Router();
 
@@ -23,6 +24,7 @@ router.get('/jobs', async (req: Request, res: Response): Promise<void> => {
       page: req.query.page ? parseInt(req.query.page as string, 10) : 1,
       limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 20,
       sort_by: (req.query.sort_by as 'posted_at' | 'relevance') || 'posted_at',
+      hide_duplicates: req.query.hide_duplicates === 'true',
     };
 
     const page = Math.max(1, filters.page || 1);
@@ -74,35 +76,114 @@ router.get('/jobs', async (req: Request, res: Response): Promise<void> => {
       query = query.order('posted_at', { ascending: false, nullsFirst: false });
     }
 
-    // Pagination
-    query = query.range(offset, offset + limit - 1);
+    if (filters.hide_duplicates) {
+      // Fetch all matching rows (paginated in batches) so we can deduplicate
+      const allJobs: any[] = [];
+      const batchSize = 1000;
+      let batchOffset = 0;
+      let hasMore = true;
 
-    const { data, error, count } = await query;
+      // Re-build the base query without range for batch fetching
+      while (hasMore) {
+        let batchQuery = supabase
+          .from('jobs')
+          .select('*')
+          .eq('is_active', true);
 
-    if (error) {
-      res.status(500).json({ error: 'Failed to fetch jobs', details: error.message });
-      return;
+        if (filters.search) {
+          const searchTerm = `%${filters.search}%`;
+          batchQuery = batchQuery.or(
+            `title.ilike.${searchTerm},company.ilike.${searchTerm},description.ilike.${searchTerm}`
+          );
+        }
+        if (filters.type) batchQuery = batchQuery.eq('type', filters.type);
+        if (filters.experience_level) batchQuery = batchQuery.eq('experience_level', filters.experience_level);
+        if (filters.source) batchQuery = batchQuery.ilike('source', filters.source);
+        if (filters.posted_after) batchQuery = batchQuery.gte('posted_at', filters.posted_after);
+        if (filters.tags && filters.tags.length > 0) batchQuery = batchQuery.contains('tags', filters.tags);
+
+        batchQuery = batchQuery
+          .order('posted_at', { ascending: false, nullsFirst: false })
+          .range(batchOffset, batchOffset + batchSize - 1);
+
+        const { data: batchData, error: batchError } = await batchQuery;
+        if (batchError) {
+          res.status(500).json({ error: 'Failed to fetch jobs', details: batchError.message });
+          return;
+        }
+        if (batchData && batchData.length > 0) {
+          allJobs.push(...batchData);
+          batchOffset += batchData.length;
+          hasMore = batchData.length === batchSize;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      // Deduplicate: keep the first (most recent) job per normalized title+company
+      const seen = new Map<string, boolean>();
+      const uniqueJobs = allJobs.filter(job => {
+        const key = `${(job.title || '').toLowerCase().trim()}::${(job.company || '').toLowerCase().trim()}`;
+        if (seen.has(key)) return false;
+        seen.set(key, true);
+        return true;
+      });
+
+      const total = uniqueJobs.length;
+      const paginatedJobs = uniqueJobs.slice(offset, offset + limit);
+
+      res.json({
+        jobs: paginatedJobs,
+        pagination: {
+          page,
+          limit,
+          total,
+          total_pages: Math.ceil(total / limit),
+          has_next: offset + limit < total,
+          has_prev: page > 1,
+        },
+        filters: {
+          search: filters.search || null,
+          type: filters.type || null,
+          experience_level: filters.experience_level || null,
+          source: filters.source || null,
+          posted_after: filters.posted_after || null,
+          tags: filters.tags || null,
+          hide_duplicates: true,
+        },
+      });
+    } else {
+      // Normal path: use DB pagination
+      query = query.range(offset, offset + limit - 1);
+
+      const { data, error, count } = await query;
+
+      if (error) {
+        res.status(500).json({ error: 'Failed to fetch jobs', details: error.message });
+        return;
+      }
+
+      res.json({
+        jobs: data || [],
+        pagination: {
+          page,
+          limit,
+          total: count || 0,
+          total_pages: Math.ceil((count || 0) / limit),
+          has_next: offset + limit < (count || 0),
+          has_prev: page > 1,
+        },
+        filters: {
+          search: filters.search || null,
+          type: filters.type || null,
+          experience_level: filters.experience_level || null,
+          source: filters.source || null,
+          posted_after: filters.posted_after || null,
+          tags: filters.tags || null,
+          hide_duplicates: false,
+        },
+      });
     }
-
-    res.json({
-      jobs: data || [],
-      pagination: {
-        page,
-        limit,
-        total: count || 0,
-        total_pages: Math.ceil((count || 0) / limit),
-        has_next: offset + limit < (count || 0),
-        has_prev: page > 1,
-      },
-      filters: {
-        search: filters.search || null,
-        type: filters.type || null,
-        experience_level: filters.experience_level || null,
-        source: filters.source || null,
-        posted_after: filters.posted_after || null,
-        tags: filters.tags || null,
-      },
-    });
   } catch (err) {
     console.error('GET /api/jobs error:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -302,6 +383,54 @@ router.get('/jobs/recommendations', async (req: Request, res: Response): Promise
 });
 
 /**
+ * GET /api/jobs/recent
+ * Returns jobs added to the database within the last N minutes (default 15).
+ * Uses `created_at` — the timestamp when our scraper first discovered the job.
+ * The live feed polls this every 2 minutes to detect freshly scraped listings.
+ *
+ * IMPORTANT: This route MUST be defined before /jobs/:id to avoid being
+ * swallowed by the parameterised route.
+ */
+router.get('/jobs/recent', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const minutes = Math.min(1440, Math.max(1, parseInt(req.query.minutes as string, 10) || 15));
+    const since = req.query.since as string | undefined;
+    // Max age for posted_at — only show jobs actually posted within this window (default 4h)
+    const maxAgeHours = Math.min(48, Math.max(1, parseInt(req.query.max_age_hours as string, 10) || 4));
+
+    // Use `since` if provided (polling), otherwise look back N minutes
+    const cutoff = since || new Date(Date.now() - minutes * 60 * 1000).toISOString();
+
+    // posted_at must also be recent — filters out old jobs the scraper just discovered
+    const postedAfter = new Date(Date.now() - maxAgeHours * 60 * 60 * 1000).toISOString();
+
+    const { data, error, count } = await supabase
+      .from('jobs')
+      .select('*', { count: 'exact' })
+      .eq('is_active', true)
+      .gt('created_at', cutoff)
+      .gte('posted_at', postedAfter)
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error) {
+      res.status(500).json({ error: 'Failed to fetch recent jobs', details: error.message });
+      return;
+    }
+
+    res.json({
+      jobs: data || [],
+      count: count || (data?.length ?? 0),
+      since: cutoff,
+      checked_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('GET /api/jobs/recent error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * GET /api/sources
  * List all available sources with their job counts.
  */
@@ -377,48 +506,61 @@ router.get('/jobs/:id', async (req: Request, res: Response): Promise<void> => {
 });
 
 /**
- * GET /api/jobs/recent
- * Fetch jobs posted within the last N minutes.
- * Used by the live notification feed to detect fresh listings.
+ * POST /api/notifications/email
+ * Send an email alert with the provided jobs.
+ * Called by the frontend when new jobs are detected and email alerts are on.
  */
-router.get('/jobs/recent', async (req: Request, res: Response): Promise<void> => {
+router.post('/notifications/email', async (req: Request, res: Response): Promise<void> => {
   try {
-    const minutes = Math.min(1440, Math.max(1, parseInt(req.query.minutes as string, 10) || 30));
-    const since = req.query.since as string | undefined;
+    const { job_ids } = req.body as { job_ids: string[] };
 
-    const cutoff = new Date(Date.now() - minutes * 60 * 1000).toISOString();
-
-    let query = supabase
-      .from('jobs')
-      .select('*', { count: 'exact' })
-      .eq('is_active', true)
-      .gte('posted_at', cutoff)
-      .order('posted_at', { ascending: false, nullsFirst: false })
-      .limit(50);
-
-    // If "since" is provided, only return jobs newer than that timestamp
-    // This lets the frontend ask "what's new since my last check?"
-    if (since) {
-      query = query.gt('posted_at', since);
-    }
-
-    const { data, error, count } = await query;
-
-    if (error) {
-      res.status(500).json({ error: 'Failed to fetch recent jobs', details: error.message });
+    if (!job_ids || !Array.isArray(job_ids) || job_ids.length === 0) {
+      res.status(400).json({ error: 'job_ids array is required' });
       return;
     }
 
+    // Cap at 20 jobs per email to prevent abuse
+    const ids = job_ids.slice(0, 20);
+
+    // Fetch the actual job data
+    const { data: jobs, error } = await supabase
+      .from('jobs')
+      .select('*')
+      .in('id', ids);
+
+    if (error || !jobs || jobs.length === 0) {
+      res.status(404).json({ error: 'No jobs found for the given IDs' });
+      return;
+    }
+
+    const sent = await sendNewJobsEmail(jobs as Job[]);
+
     res.json({
-      jobs: data || [],
-      count: count || (data?.length ?? 0),
-      since: since || cutoff,
-      checked_at: new Date().toISOString(),
+      sent,
+      jobs_count: jobs.length,
+      message: sent ? 'Email alert sent' : 'Email not configured — check .env',
     });
   } catch (err) {
-    console.error('GET /api/jobs/recent error:', err);
+    console.error('POST /api/notifications/email error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+/**
+ * GET /api/notifications/status
+ * Check if email notifications are configured on the backend.
+ */
+router.get('/notifications/status', async (_req: Request, res: Response): Promise<void> => {
+  const configured =
+    process.env.EMAIL_ENABLED === 'true' &&
+    !!process.env.EMAIL_SMTP_USER &&
+    !!process.env.EMAIL_SMTP_PASS &&
+    process.env.EMAIL_SMTP_PASS !== 'your-gmail-app-password-here';
+
+  res.json({
+    email_enabled: configured,
+    email_to: configured ? process.env.EMAIL_TO : null,
+  });
 });
 
 /**

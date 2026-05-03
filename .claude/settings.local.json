@@ -69,7 +69,8 @@
       "WebFetch(domain:www.similarweb.com)",
       "WebFetch(domain:www.trustpilot.com)",
       "WebFetch(domain:hypestat.com)",
-      "WebFetch(domain:web.archive.org)"
+      "WebFetch(domain:web.archive.org)",
+      "Bash(cd:*)"
     ]
   }
 }
