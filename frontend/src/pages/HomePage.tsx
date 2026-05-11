@@ -119,7 +119,8 @@ export default function HomePage() {
             {(filters.type ||
               filters.experience_level ||
               filters.source ||
-              filters.tags.length > 0) && (
+              filters.tags.length > 0 ||
+              filters.location_romania) && (
               <span className="w-2 h-2 rounded-full bg-primary" />
             )}
           </button>

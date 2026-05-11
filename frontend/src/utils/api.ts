@@ -33,6 +33,7 @@ export async function fetchJobs(
   if (filters.limit) params.limit = filters.limit;
   if (filters.sort_by) params.sort_by = filters.sort_by;
   if (filters.hide_duplicates) params.hide_duplicates = 'true';
+  if (filters.location_romania) params.location_romania = 'true';
 
   const { data: raw } = await api.get('/jobs', { params });
 
@@ -103,6 +104,22 @@ export async function getNotificationStatus(): Promise<{
   email_to: string | null;
 }> {
   const { data } = await api.get('/notifications/status');
+  return data;
+}
+
+// Scraper control
+export async function getScraperStatus(): Promise<{ paused: boolean }> {
+  const { data } = await api.get('/scraper/status');
+  return data;
+}
+
+export async function pauseScraper(): Promise<{ paused: boolean }> {
+  const { data } = await api.post('/scraper/pause');
+  return data;
+}
+
+export async function resumeScraper(): Promise<{ paused: boolean }> {
+  const { data } = await api.post('/scraper/resume');
   return data;
 }
 

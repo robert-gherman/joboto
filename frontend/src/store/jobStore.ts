@@ -31,6 +31,7 @@ const defaultFilters: JobFilters = {
   tags: [],
   sort_by: 'posted_at',
   hide_duplicates: false,
+  location_romania: false,
 };
 
 export const useJobStore = create<JobStore>((set, get) => ({

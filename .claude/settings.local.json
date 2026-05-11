@@ -70,7 +70,10 @@
       "WebFetch(domain:www.trustpilot.com)",
       "WebFetch(domain:hypestat.com)",
       "WebFetch(domain:web.archive.org)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(npx tsc *)",
+      "PowerShell(try { $r = Invoke-RestMethod -Uri \"http://localhost:3001/api/jobs/stats\" -Method Get; $r | ConvertTo-Json -Depth 5 } catch { $_.Exception.Message; $_.ErrorDetails.Message })",
+      "PowerShell(\\(Get-Content \"D:\\\\vsfile\\\\joboto\\\\jobs_rows.csv\" | Measure-Object -Line\\).Lines)"
     ]
   }
 }

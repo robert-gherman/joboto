@@ -1,15 +1,63 @@
 import { Router, Request, Response } from 'express';
-import supabase from '../utils/supabase';
+import pool from '../utils/db';
 import { JobFilters, Job } from '../types';
 import { runAllScrapers } from '../scrapers';
 import { sendNewJobsEmail } from '../utils/email';
 
 const router = Router();
 
-/**
- * GET /api/jobs
- * List jobs with full filtering, pagination, and sorting.
- */
+const ROMANIA_TERMS = [
+  'romania', 'bucharest', 'bucurești', 'cluj', 'timișoara', 'timisoara',
+  'iași', 'iasi', 'brașov', 'brasov', 'constanța', 'constanta',
+  'sibiu', 'craiova', 'galați', 'galati', 'oradea', 'brăila', 'braila',
+  'pitești', 'pitesti', 'arad', 'ploiești', 'ploiesti', 'târgu mureș',
+  'targu mures', 'baia mare', 'buzău', 'buzau', 'satu mare', 'suceava',
+];
+
+const ROMANIA_REGEX = `(${ROMANIA_TERMS.join('|')})`;
+
+function buildWhereClause(filters: JobFilters): { where: string; params: unknown[] } {
+  const conditions: string[] = ['is_active = true'];
+  const params: unknown[] = [];
+
+  if (filters.search) {
+    params.push(`%${filters.search}%`);
+    const p = `$${params.length}`;
+    conditions.push(`(title ILIKE ${p} OR company ILIKE ${p} OR description ILIKE ${p})`);
+  }
+
+  if (filters.type) {
+    params.push(filters.type);
+    conditions.push(`type = $${params.length}`);
+  }
+
+  if (filters.experience_level) {
+    params.push(filters.experience_level);
+    conditions.push(`experience_level = $${params.length}`);
+  }
+
+  if (filters.source) {
+    params.push(filters.source);
+    conditions.push(`source ILIKE $${params.length}`);
+  }
+
+  if (filters.posted_after) {
+    params.push(filters.posted_after);
+    conditions.push(`posted_at >= $${params.length}`);
+  }
+
+  if (filters.tags && filters.tags.length > 0) {
+    params.push(filters.tags);
+    conditions.push(`tags @> $${params.length}::text[]`);
+  }
+
+  if (filters.location_romania) {
+    conditions.push(`location ~* '${ROMANIA_REGEX}'`);
+  }
+
+  return { where: conditions.join(' AND '), params };
+}
+
 router.get('/jobs', async (req: Request, res: Response): Promise<void> => {
   try {
     const filters: JobFilters = {
@@ -25,102 +73,40 @@ router.get('/jobs', async (req: Request, res: Response): Promise<void> => {
       limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 20,
       sort_by: (req.query.sort_by as 'posted_at' | 'relevance') || 'posted_at',
       hide_duplicates: req.query.hide_duplicates === 'true',
+      location_romania: req.query.location_romania === 'true',
     };
 
     const page = Math.max(1, filters.page || 1);
     const limit = Math.min(100, Math.max(1, filters.limit || 20));
     const offset = (page - 1) * limit;
 
-    let query = supabase
-      .from('jobs')
-      .select('*', { count: 'exact' })
-      .eq('is_active', true);
-
-    // Full-text search across title, company, description
-    if (filters.search) {
-      const searchTerm = `%${filters.search}%`;
-      query = query.or(
-        `title.ilike.${searchTerm},company.ilike.${searchTerm},description.ilike.${searchTerm}`
-      );
-    }
-
-    // Filter by work type
-    if (filters.type) {
-      query = query.eq('type', filters.type);
-    }
-
-    // Filter by experience level
-    if (filters.experience_level) {
-      query = query.eq('experience_level', filters.experience_level);
-    }
-
-    // Filter by source
-    if (filters.source) {
-      query = query.ilike('source', filters.source);
-    }
-
-    // Filter by posted date
-    if (filters.posted_after) {
-      query = query.gte('posted_at', filters.posted_after);
-    }
-
-    // Filter by tags (must contain all specified tags)
-    if (filters.tags && filters.tags.length > 0) {
-      query = query.contains('tags', filters.tags);
-    }
-
-    // Sorting — nullsFirst: false pushes unknown dates to the end
-    if (filters.sort_by === 'posted_at') {
-      query = query.order('posted_at', { ascending: false, nullsFirst: false });
-    } else {
-      query = query.order('posted_at', { ascending: false, nullsFirst: false });
-    }
+    const { where, params } = buildWhereClause(filters);
 
     if (filters.hide_duplicates) {
-      // Fetch all matching rows (paginated in batches) so we can deduplicate
       const allJobs: any[] = [];
       const batchSize = 1000;
       let batchOffset = 0;
       let hasMore = true;
 
-      // Re-build the base query without range for batch fetching
       while (hasMore) {
-        let batchQuery = supabase
-          .from('jobs')
-          .select('*')
-          .eq('is_active', true);
+        const batchParams = [...params, batchSize, batchOffset];
+        const limitIdx = `$${batchParams.length - 1}`;
+        const offsetIdx = `$${batchParams.length}`;
 
-        if (filters.search) {
-          const searchTerm = `%${filters.search}%`;
-          batchQuery = batchQuery.or(
-            `title.ilike.${searchTerm},company.ilike.${searchTerm},description.ilike.${searchTerm}`
-          );
-        }
-        if (filters.type) batchQuery = batchQuery.eq('type', filters.type);
-        if (filters.experience_level) batchQuery = batchQuery.eq('experience_level', filters.experience_level);
-        if (filters.source) batchQuery = batchQuery.ilike('source', filters.source);
-        if (filters.posted_after) batchQuery = batchQuery.gte('posted_at', filters.posted_after);
-        if (filters.tags && filters.tags.length > 0) batchQuery = batchQuery.contains('tags', filters.tags);
+        const { rows } = await pool.query(
+          `SELECT * FROM jobs WHERE ${where} ORDER BY posted_at DESC NULLS LAST LIMIT ${limitIdx} OFFSET ${offsetIdx}`,
+          batchParams
+        );
 
-        batchQuery = batchQuery
-          .order('posted_at', { ascending: false, nullsFirst: false })
-          .range(batchOffset, batchOffset + batchSize - 1);
-
-        const { data: batchData, error: batchError } = await batchQuery;
-        if (batchError) {
-          res.status(500).json({ error: 'Failed to fetch jobs', details: batchError.message });
-          return;
-        }
-        if (batchData && batchData.length > 0) {
-          allJobs.push(...batchData);
-          batchOffset += batchData.length;
-          hasMore = batchData.length === batchSize;
+        if (rows.length > 0) {
+          allJobs.push(...rows);
+          batchOffset += rows.length;
+          hasMore = rows.length === batchSize;
         } else {
           hasMore = false;
         }
       }
 
-      // Deduplicate: keep the first (most recent) job per normalized title+company
       const seen = new Map<string, boolean>();
       const uniqueJobs = allJobs.filter(job => {
         const key = `${(job.title || '').toLowerCase().trim()}::${(job.company || '').toLowerCase().trim()}`;
@@ -153,24 +139,30 @@ router.get('/jobs', async (req: Request, res: Response): Promise<void> => {
         },
       });
     } else {
-      // Normal path: use DB pagination
-      query = query.range(offset, offset + limit - 1);
+      const countParams = [...params];
+      const { rows: countRows } = await pool.query(
+        `SELECT COUNT(*) FROM jobs WHERE ${where}`,
+        countParams
+      );
+      const total = parseInt(countRows[0].count, 10);
 
-      const { data, error, count } = await query;
+      const dataParams = [...params, limit, offset];
+      const limitIdx = `$${dataParams.length - 1}`;
+      const offsetIdx = `$${dataParams.length}`;
 
-      if (error) {
-        res.status(500).json({ error: 'Failed to fetch jobs', details: error.message });
-        return;
-      }
+      const { rows } = await pool.query(
+        `SELECT * FROM jobs WHERE ${where} ORDER BY posted_at DESC NULLS LAST LIMIT ${limitIdx} OFFSET ${offsetIdx}`,
+        dataParams
+      );
 
       res.json({
-        jobs: data || [],
+        jobs: rows,
         pagination: {
           page,
           limit,
-          total: count || 0,
-          total_pages: Math.ceil((count || 0) / limit),
-          has_next: offset + limit < (count || 0),
+          total,
+          total_pages: Math.ceil(total / limit),
+          has_next: offset + limit < total,
           has_prev: page > 1,
         },
         filters: {
@@ -190,51 +182,8 @@ router.get('/jobs', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-/**
- * GET /api/jobs/stats
- * Aggregated statistics about the job listings.
- * Fetches all rows in batches to avoid Supabase's 1000 row default limit.
- */
 router.get('/jobs/stats', async (_req: Request, res: Response): Promise<void> => {
   try {
-    // Total active jobs
-    const { count: totalJobs } = await supabase
-      .from('jobs')
-      .select('*', { count: 'exact', head: true })
-      .eq('is_active', true);
-
-    // Fetch all source/type/experience data in one query, paginated to avoid the 1000 row limit
-    const allRows: { source: string; type: string; experience_level: string; posted_at: string | null }[] = [];
-    const pageSize = 1000;
-    let offset = 0;
-    let hasMore = true;
-
-    while (hasMore) {
-      const { data, error } = await supabase
-        .from('jobs')
-        .select('source, type, experience_level, posted_at')
-        .eq('is_active', true)
-        .range(offset, offset + pageSize - 1);
-
-      if (error) {
-        console.error('Stats query error at offset', offset, error.message);
-        break;
-      }
-
-      if (data && data.length > 0) {
-        allRows.push(...data);
-        offset += data.length;
-        hasMore = data.length === pageSize;
-      } else {
-        hasMore = false;
-      }
-    }
-
-    // Aggregate counts
-    const bySource: Record<string, number> = {};
-    const byType: Record<string, number> = {};
-    const byExperience: Record<string, number> = {};
-
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const todayISO = todayStart.toISOString();
@@ -243,22 +192,38 @@ router.get('/jobs/stats', async (_req: Request, res: Response): Promise<void> =>
     weekAgo.setDate(weekAgo.getDate() - 7);
     const weekISO = weekAgo.toISOString();
 
-    let newToday = 0;
-    let newThisWeek = 0;
+    const [totalsResult, sourceResult, typeResult, expResult] = await Promise.all([
+      pool.query(
+        `SELECT COUNT(*) as total,
+                SUM(CASE WHEN posted_at >= $1 THEN 1 ELSE 0 END) as new_today,
+                SUM(CASE WHEN posted_at >= $2 THEN 1 ELSE 0 END) as new_this_week
+         FROM jobs WHERE is_active = true`,
+        [todayISO, weekISO]
+      ),
+      pool.query(
+        `SELECT source, COUNT(*) as count FROM jobs WHERE is_active = true GROUP BY source`
+      ),
+      pool.query(
+        `SELECT type, COUNT(*) as count FROM jobs WHERE is_active = true GROUP BY type`
+      ),
+      pool.query(
+        `SELECT experience_level, COUNT(*) as count FROM jobs WHERE is_active = true GROUP BY experience_level`
+      ),
+    ]);
 
-    for (const row of allRows) {
-      bySource[row.source] = (bySource[row.source] || 0) + 1;
-      byType[row.type] = (byType[row.type] || 0) + 1;
-      byExperience[row.experience_level] = (byExperience[row.experience_level] || 0) + 1;
+    const totals = totalsResult.rows[0];
+    const bySource: Record<string, number> = {};
+    const byType: Record<string, number> = {};
+    const byExperience: Record<string, number> = {};
 
-      if (row.posted_at && row.posted_at >= todayISO) newToday++;
-      if (row.posted_at && row.posted_at >= weekISO) newThisWeek++;
-    }
+    for (const row of sourceResult.rows) bySource[row.source] = parseInt(row.count, 10);
+    for (const row of typeResult.rows) byType[row.type] = parseInt(row.count, 10);
+    for (const row of expResult.rows) byExperience[row.experience_level] = parseInt(row.count, 10);
 
     res.json({
-      total_jobs: totalJobs || allRows.length,
-      new_today: newToday,
-      new_this_week: newThisWeek,
+      total_jobs: parseInt(totals.total, 10),
+      new_today: parseInt(totals.new_today, 10) || 0,
+      new_this_week: parseInt(totals.new_this_week, 10) || 0,
       by_source: bySource,
       by_type: byType,
       by_experience_level: byExperience,
@@ -269,10 +234,6 @@ router.get('/jobs/stats', async (_req: Request, res: Response): Promise<void> =>
   }
 });
 
-/**
- * GET /api/jobs/recommendations
- * AI-style recommendations using keyword matching and TF-IDF scoring.
- */
 router.get('/jobs/recommendations', async (req: Request, res: Response): Promise<void> => {
   try {
     const queryText = (req.query.q as string) || '';
@@ -283,32 +244,21 @@ router.get('/jobs/recommendations', async (req: Request, res: Response): Promise
       return;
     }
 
-    // Fetch recent active jobs
-    const { data: jobs, error } = await supabase
-      .from('jobs')
-      .select('*')
-      .eq('is_active', true)
-      .order('posted_at', { ascending: false })
-      .limit(500);
+    const { rows: jobs } = await pool.query(
+      `SELECT * FROM jobs WHERE is_active = true ORDER BY posted_at DESC NULLS LAST LIMIT 500`
+    );
 
-    if (error) {
-      res.status(500).json({ error: 'Failed to fetch jobs', details: error.message });
-      return;
-    }
-
-    if (!jobs || jobs.length === 0) {
+    if (jobs.length === 0) {
       res.json({ recommendations: [], query: queryText });
       return;
     }
 
-    // Simple TF-IDF style scoring
     const queryTerms = queryText
       .toLowerCase()
       .replace(/[^\w\s.-]/g, '')
       .split(/\s+/)
       .filter(t => t.length > 1);
 
-    // Calculate document frequency for each term
     const docFreq: Record<string, number> = {};
     for (const term of queryTerms) {
       docFreq[term] = jobs.filter(job => {
@@ -319,32 +269,25 @@ router.get('/jobs/recommendations', async (req: Request, res: Response): Promise
 
     const totalDocs = jobs.length;
 
-    // Score each job
     const scored = jobs.map(job => {
       const text = `${job.title} ${job.company} ${job.description} ${(job.tags || []).join(' ')}`.toLowerCase();
       let score = 0;
 
       for (const term of queryTerms) {
-        // Term frequency in document
         const regex = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
         const matches = text.match(regex);
         const tf = matches ? matches.length : 0;
 
         if (tf === 0) continue;
 
-        // Inverse document frequency
         const df = docFreq[term] || 1;
         const idf = Math.log(totalDocs / df);
-
-        // TF-IDF score
         let termScore = tf * idf;
 
-        // Boost if term appears in title (3x weight)
         if (job.title.toLowerCase().includes(term)) {
           termScore *= 3;
         }
 
-        // Boost if term appears in tags (2x weight)
         if ((job.tags || []).some((t: string) => t.toLowerCase().includes(term))) {
           termScore *= 2;
         }
@@ -352,11 +295,10 @@ router.get('/jobs/recommendations', async (req: Request, res: Response): Promise
         score += termScore;
       }
 
-      // Recency boost: jobs posted more recently get a small boost
       const postedDate = new Date(job.posted_at).getTime();
       const now = Date.now();
       const daysSincePosted = (now - postedDate) / (1000 * 60 * 60 * 24);
-      const recencyBoost = Math.max(0, 1 - daysSincePosted / 30); // Decays over 30 days
+      const recencyBoost = Math.max(0, 1 - daysSincePosted / 30);
       score += recencyBoost * 0.5;
 
       return {
@@ -365,7 +307,6 @@ router.get('/jobs/recommendations', async (req: Request, res: Response): Promise
       };
     });
 
-    // Sort by score descending and take top results
     const recommendations = scored
       .filter(j => j.relevance_score > 0)
       .sort((a, b) => b.relevance_score - a.relevance_score)
@@ -382,45 +323,25 @@ router.get('/jobs/recommendations', async (req: Request, res: Response): Promise
   }
 });
 
-/**
- * GET /api/jobs/recent
- * Returns jobs added to the database within the last N minutes (default 15).
- * Uses `created_at` — the timestamp when our scraper first discovered the job.
- * The live feed polls this every 2 minutes to detect freshly scraped listings.
- *
- * IMPORTANT: This route MUST be defined before /jobs/:id to avoid being
- * swallowed by the parameterised route.
- */
 router.get('/jobs/recent', async (req: Request, res: Response): Promise<void> => {
   try {
     const minutes = Math.min(1440, Math.max(1, parseInt(req.query.minutes as string, 10) || 15));
     const since = req.query.since as string | undefined;
-    // Max age for posted_at — only show jobs actually posted within this window (default 4h)
     const maxAgeHours = Math.min(48, Math.max(1, parseInt(req.query.max_age_hours as string, 10) || 4));
 
-    // Use `since` if provided (polling), otherwise look back N minutes
     const cutoff = since || new Date(Date.now() - minutes * 60 * 1000).toISOString();
-
-    // posted_at must also be recent — filters out old jobs the scraper just discovered
     const postedAfter = new Date(Date.now() - maxAgeHours * 60 * 60 * 1000).toISOString();
 
-    const { data, error, count } = await supabase
-      .from('jobs')
-      .select('*', { count: 'exact' })
-      .eq('is_active', true)
-      .gt('created_at', cutoff)
-      .gte('posted_at', postedAfter)
-      .order('created_at', { ascending: false })
-      .limit(50);
-
-    if (error) {
-      res.status(500).json({ error: 'Failed to fetch recent jobs', details: error.message });
-      return;
-    }
+    const { rows, rowCount } = await pool.query(
+      `SELECT * FROM jobs
+       WHERE is_active = true AND created_at > $1 AND posted_at >= $2
+       ORDER BY created_at DESC LIMIT 50`,
+      [cutoff, postedAfter]
+    );
 
     res.json({
-      jobs: data || [],
-      count: count || (data?.length ?? 0),
+      jobs: rows,
+      count: rowCount ?? rows.length,
       since: cutoff,
       checked_at: new Date().toISOString(),
     });
@@ -430,86 +351,42 @@ router.get('/jobs/recent', async (req: Request, res: Response): Promise<void> =>
   }
 });
 
-/**
- * GET /api/sources
- * List all available sources with their job counts.
- */
 router.get('/sources', async (_req: Request, res: Response): Promise<void> => {
   try {
-    // Fetch all sources with pagination to avoid 1000 row limit
-    const allSources: string[] = [];
-    const pageSize = 1000;
-    let offset = 0;
-    let hasMore = true;
+    const { rows } = await pool.query(
+      `SELECT source AS name, COUNT(*)::int AS count
+       FROM jobs WHERE is_active = true
+       GROUP BY source ORDER BY count DESC`
+    );
 
-    while (hasMore) {
-      const { data, error } = await supabase
-        .from('jobs')
-        .select('source')
-        .eq('is_active', true)
-        .range(offset, offset + pageSize - 1);
-
-      if (error) {
-        console.error('Sources query error:', error.message);
-        break;
-      }
-
-      if (data && data.length > 0) {
-        allSources.push(...data.map(row => row.source));
-        offset += data.length;
-        hasMore = data.length === pageSize;
-      } else {
-        hasMore = false;
-      }
-    }
-
-    const sourceCounts: Record<string, number> = {};
-    allSources.forEach(source => {
-      sourceCounts[source] = (sourceCounts[source] || 0) + 1;
-    });
-
-    const sources = Object.entries(sourceCounts)
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count);
-
-    res.json({ sources });
+    res.json({ sources: rows });
   } catch (err) {
     console.error('GET /api/sources error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-/**
- * GET /api/jobs/:id
- * Get a single job by ID.
- */
 router.get('/jobs/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
 
-    const { data, error } = await supabase
-      .from('jobs')
-      .select('*')
-      .eq('id', id)
-      .single();
+    const { rows } = await pool.query(
+      `SELECT * FROM jobs WHERE id = $1 LIMIT 1`,
+      [id]
+    );
 
-    if (error || !data) {
+    if (rows.length === 0) {
       res.status(404).json({ error: 'Job not found' });
       return;
     }
 
-    res.json({ job: data });
+    res.json({ job: rows[0] });
   } catch (err) {
     console.error('GET /api/jobs/:id error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-/**
- * POST /api/notifications/email
- * Send an email alert with the provided jobs.
- * Called by the frontend when new jobs are detected and email alerts are on.
- */
 router.post('/notifications/email', async (req: Request, res: Response): Promise<void> => {
   try {
     const { job_ids } = req.body as { job_ids: string[] };
@@ -519,16 +396,14 @@ router.post('/notifications/email', async (req: Request, res: Response): Promise
       return;
     }
 
-    // Cap at 20 jobs per email to prevent abuse
     const ids = job_ids.slice(0, 20);
 
-    // Fetch the actual job data
-    const { data: jobs, error } = await supabase
-      .from('jobs')
-      .select('*')
-      .in('id', ids);
+    const { rows: jobs } = await pool.query(
+      `SELECT * FROM jobs WHERE id = ANY($1::text[])`,
+      [ids]
+    );
 
-    if (error || !jobs || jobs.length === 0) {
+    if (jobs.length === 0) {
       res.status(404).json({ error: 'No jobs found for the given IDs' });
       return;
     }
@@ -546,10 +421,6 @@ router.post('/notifications/email', async (req: Request, res: Response): Promise
   }
 });
 
-/**
- * GET /api/notifications/status
- * Check if email notifications are configured on the backend.
- */
 router.get('/notifications/status', async (_req: Request, res: Response): Promise<void> => {
   const configured =
     process.env.EMAIL_ENABLED === 'true' &&
@@ -563,15 +434,10 @@ router.get('/notifications/status', async (_req: Request, res: Response): Promis
   });
 });
 
-/**
- * POST /api/jobs/scrape
- * Trigger a manual scrape. For dev/admin use.
- */
 router.post('/jobs/scrape', async (_req: Request, res: Response): Promise<void> => {
   try {
     res.json({ message: 'Scrape started', status: 'running' });
 
-    // Run scrape in background (don't await to avoid timeout)
     runAllScrapers()
       .then(result => {
         console.log('Manual scrape completed:', {

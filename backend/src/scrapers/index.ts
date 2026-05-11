@@ -1,5 +1,5 @@
 import { Job, ScraperResult } from '../types';
-import { upsertJobs } from '../utils/supabase';
+import { upsertJobs } from '../utils/db';
 import { generateJobId, delay } from '../utils/helpers';
 
 // === Priority 1: LinkedIn (broadest reach, verified working) ===

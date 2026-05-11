@@ -15,10 +15,12 @@ import {
   Mail,
   MailX,
   Loader2,
+  Pause,
+  Play,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { Job } from '../types';
-import { fetchRecentJobs, sendEmailAlert, getNotificationStatus } from '../utils/api';
+import { fetchRecentJobs, sendEmailAlert, getNotificationStatus, getScraperStatus, pauseScraper, resumeScraper } from '../utils/api';
 
 const POLL_INTERVAL = 2 * 60 * 1000; // 2 minutes
 
@@ -49,8 +51,33 @@ export default function LiveJobFeed() {
   const [emailSending, setEmailSending] = useState(false);
   const [lastCheck, setLastCheck] = useState<string | null>(null);
   const [newCount, setNewCount] = useState(0);
+  const [searchPaused, setSearchPaused] = useState(false);
   const seenJobIds = useRef<Set<string>>(new Set());
   const isFirstLoad = useRef(true);
+
+  // Load scraper paused state
+  useEffect(() => {
+    const savedPaused = localStorage.getItem('joboto-search-paused');
+    if (savedPaused === 'true') setSearchPaused(true);
+    getScraperStatus()
+      .then((status) => setSearchPaused(status.paused))
+      .catch(() => {});
+  }, []);
+
+  const toggleSearchPaused = async () => {
+    const next = !searchPaused;
+    setSearchPaused(next);
+    localStorage.setItem('joboto-search-paused', String(next));
+    try {
+      if (next) {
+        await pauseScraper();
+      } else {
+        await resumeScraper();
+      }
+    } catch {
+      // Backend might not be reachable, but local pause still works
+    }
+  };
 
   // Check if email is configured on the backend
   useEffect(() => {
@@ -225,12 +252,13 @@ export default function LiveJobFeed() {
     }
   }, [lastCheck, sendNotification, playNotificationSound, sendEmailForJobs]);
 
-  // Initial fetch + polling
+  // Initial fetch + polling (respects pause state)
   useEffect(() => {
+    if (searchPaused) return;
     checkForNewJobs();
     const interval = setInterval(checkForNewJobs, POLL_INTERVAL);
     return () => clearInterval(interval);
-  }, [checkForNewJobs]);
+  }, [checkForNewJobs, searchPaused]);
 
   // Clear "new" highlight after 30 seconds
   useEffect(() => {
@@ -283,11 +311,20 @@ export default function LiveJobFeed() {
       >
         <div className="flex items-center gap-3">
           <div className="relative">
-            <Radio className="w-5 h-5 text-danger" />
-            <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-danger animate-ping" />
-            <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-danger" />
+            <Radio className={`w-5 h-5 ${searchPaused ? 'text-warning' : 'text-danger'}`} />
+            {!searchPaused && (
+              <>
+                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-danger animate-ping" />
+                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-danger" />
+              </>
+            )}
+            {searchPaused && (
+              <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-warning" />
+            )}
           </div>
-          <span className="text-sm font-semibold text-text-primary">Live Feed</span>
+          <span className="text-sm font-semibold text-text-primary">
+            {searchPaused ? 'Live Feed (Paused)' : 'Live Feed'}
+          </span>
           <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-danger/10 text-danger border border-danger/20">
             {recentJobs.length} recent
           </span>
@@ -298,6 +335,25 @@ export default function LiveJobFeed() {
           )}
         </div>
         <div className="flex items-center gap-1.5">
+          {/* Pause/Resume toggle */}
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleSearchPaused();
+            }}
+            className={`p-1.5 rounded-lg transition-all duration-200 cursor-pointer ${
+              searchPaused
+                ? 'text-warning bg-warning/10'
+                : 'text-text-muted hover:text-text-primary hover:bg-surface-lighter/30'
+            }`}
+            title={searchPaused ? 'Resume searching for new jobs' : 'Pause searching for new jobs'}
+          >
+            {searchPaused ? (
+              <Play className="w-4 h-4" />
+            ) : (
+              <Pause className="w-4 h-4" />
+            )}
+          </div>
           {/* Email toggle */}
           <div
             onClick={(e) => {
@@ -372,6 +428,25 @@ export default function LiveJobFeed() {
           )}
         </div>
       </button>
+
+      {/* Paused banner */}
+      {expanded && searchPaused && (
+        <div className="px-4 py-2 bg-warning/5 border-t border-warning/10 flex items-center gap-2">
+          <Pause className="w-3.5 h-3.5 text-warning" />
+          <span className="text-[11px] text-warning">
+            Job searching is paused — no requests are being sent to APIs
+          </span>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleSearchPaused();
+            }}
+            className="ml-auto text-[11px] text-warning font-medium hover:text-warning/80 transition-colors duration-200"
+          >
+            Resume
+          </button>
+        </div>
+      )}
 
       {/* Email status banner */}
       {expanded && emailEnabled && emailConfigured && (
@@ -486,24 +561,32 @@ export default function LiveJobFeed() {
           {/* Footer */}
           <div className="px-4 py-2.5 bg-surface-light/20 border-t border-border flex items-center justify-between">
             <span className="text-[11px] text-text-muted">
-              Auto-refreshing every 2 min
-              {lastCheck && (
+              {searchPaused ? (
+                'Searching paused — no API requests being sent'
+              ) : (
                 <>
-                  {' '}
-                  - Last check:{' '}
-                  {formatDistanceToNow(new Date(lastCheck), { addSuffix: true })}
+                  Auto-refreshing every 2 min
+                  {lastCheck && (
+                    <>
+                      {' '}
+                      — Last check:{' '}
+                      {formatDistanceToNow(new Date(lastCheck), { addSuffix: true })}
+                    </>
+                  )}
                 </>
               )}
             </span>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                checkForNewJobs();
-              }}
-              className="text-[11px] text-primary-light hover:text-primary font-medium transition-colors duration-200"
-            >
-              Check now
-            </button>
+            {!searchPaused && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  checkForNewJobs();
+                }}
+                className="text-[11px] text-primary-light hover:text-primary font-medium transition-colors duration-200"
+              >
+                Check now
+              </button>
+            )}
           </div>
         </div>
       )}

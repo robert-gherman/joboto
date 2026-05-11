@@ -1,12 +1,9 @@
 import { Router, Request, Response } from 'express';
-import supabase from '../utils/supabase';
+import pool from '../utils/db';
 import { extractTags } from '../utils/helpers';
 
 const router = Router();
 
-/**
- * Common skill categories for frontend/React/JS roles.
- */
 const SKILL_CATEGORIES: Record<string, string[]> = {
   'core-frontend': ['html', 'css', 'javascript', 'typescript'],
   'frameworks': ['react', 'vue', 'angular', 'svelte', 'next.js', 'nuxt', 'gatsby', 'remix'],
@@ -20,18 +17,13 @@ const SKILL_CATEGORIES: Record<string, string[]> = {
   'soft-skills': ['agile', 'scrum', 'communication', 'teamwork', 'leadership', 'problem-solving'],
 };
 
-/**
- * Extract skills from text using pattern matching.
- */
 function extractSkillsFromText(text: string): string[] {
   const lower = text.toLowerCase();
   const skills = new Set<string>();
 
-  // Use the tag extractor
   const tags = extractTags(text, '');
   tags.forEach(t => skills.add(t));
 
-  // Additional skill-specific patterns
   const additionalPatterns: Record<string, RegExp> = {
     'responsive design': /responsive\s*design/i,
     'accessibility': /\ba11y\b|accessibility|\bwcag\b|\baria\b/i,
@@ -64,9 +56,6 @@ function extractSkillsFromText(text: string): string[] {
   return Array.from(skills);
 }
 
-/**
- * Categorize a set of skills into their respective categories.
- */
 function categorizeSkills(skills: string[]): Record<string, string[]> {
   const categorized: Record<string, string[]> = {};
 
@@ -81,7 +70,6 @@ function categorizeSkills(skills: string[]): Record<string, string[]> {
     }
   }
 
-  // Any uncategorized skills
   const allCategorized = new Set(Object.values(categorized).flat().map(s => s.toLowerCase()));
   const uncategorized = skills.filter(s => !allCategorized.has(s.toLowerCase()));
   if (uncategorized.length > 0) {
@@ -91,16 +79,12 @@ function categorizeSkills(skills: string[]): Record<string, string[]> {
   return categorized;
 }
 
-/**
- * Calculate match score between user skills and job requirements.
- */
 function calculateMatchScore(userSkills: string[], jobTags: string[], jobText: string): number {
   if (userSkills.length === 0) return 0;
 
   const jobLower = jobText.toLowerCase();
   const jobTagsLower = new Set(jobTags.map(t => t.toLowerCase()));
 
-  let matchedCount = 0;
   let weightedScore = 0;
 
   for (const skill of userSkills) {
@@ -109,23 +93,16 @@ function calculateMatchScore(userSkills: string[], jobTags: string[], jobText: s
     const inText = jobLower.includes(skillLower);
 
     if (inTags) {
-      matchedCount++;
-      weightedScore += 2; // Higher weight for explicit tag matches
+      weightedScore += 2;
     } else if (inText) {
-      matchedCount++;
       weightedScore += 1;
     }
   }
 
-  // Normalize: percentage of matched skills, weighted by importance
   const maxPossible = userSkills.length * 2;
   return Math.round((weightedScore / maxPossible) * 100);
 }
 
-/**
- * POST /api/ai/analyze-resume
- * Analyze resume text, extract skills, match against current jobs.
- */
 router.post('/ai/analyze-resume', async (req: Request, res: Response): Promise<void> => {
   try {
     const { resume_text, limit: requestLimit } = req.body;
@@ -137,24 +114,13 @@ router.post('/ai/analyze-resume', async (req: Request, res: Response): Promise<v
 
     const limit = Math.min(50, parseInt(requestLimit, 10) || 15);
 
-    // Extract skills from resume
     const skills = extractSkillsFromText(resume_text);
     const categorizedSkills = categorizeSkills(skills);
 
-    // Fetch active jobs to match against
-    const { data: jobs, error } = await supabase
-      .from('jobs')
-      .select('*')
-      .eq('is_active', true)
-      .order('posted_at', { ascending: false })
-      .limit(500);
+    const { rows: jobs } = await pool.query(
+      `SELECT * FROM jobs WHERE is_active = true ORDER BY posted_at DESC NULLS LAST LIMIT 500`
+    );
 
-    if (error) {
-      res.status(500).json({ error: 'Failed to fetch jobs', details: error.message });
-      return;
-    }
-
-    // Score each job
     const matches = (jobs || [])
       .map(job => {
         const jobText = `${job.title} ${job.description} ${job.company}`;
@@ -206,10 +172,6 @@ router.post('/ai/analyze-resume', async (req: Request, res: Response): Promise<v
   }
 });
 
-/**
- * POST /api/ai/job-tips
- * Given a job ID, generate application tips.
- */
 router.post('/ai/job-tips', async (req: Request, res: Response): Promise<void> => {
   try {
     const { job_id, user_skills } = req.body;
@@ -219,22 +181,20 @@ router.post('/ai/job-tips', async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    // Fetch the job
-    const { data: job, error } = await supabase
-      .from('jobs')
-      .select('*')
-      .eq('id', job_id)
-      .single();
+    const { rows } = await pool.query(
+      `SELECT * FROM jobs WHERE id = $1 LIMIT 1`,
+      [job_id]
+    );
 
-    if (error || !job) {
+    if (rows.length === 0) {
       res.status(404).json({ error: 'Job not found' });
       return;
     }
 
+    const job = rows[0];
     const jobTags: string[] = job.tags || [];
     const jobText = `${job.title} ${job.description}`.toLowerCase();
 
-    // Determine what to highlight
     const userSkillList: string[] = user_skills
       ? extractSkillsFromText(
           Array.isArray(user_skills) ? user_skills.join(' ') : user_skills
@@ -250,10 +210,8 @@ router.post('/ai/job-tips', async (req: Request, res: Response): Promise<void> =
       t => !userSkillList.some(s => s.toLowerCase() === t.toLowerCase())
     );
 
-    // Generate tips based on job analysis
     const tips: string[] = [];
 
-    // Experience level tips
     switch (job.experience_level) {
       case 'intern':
         tips.push('Emphasize your eagerness to learn and any academic projects or personal projects you have built.');
@@ -277,7 +235,6 @@ router.post('/ai/job-tips', async (req: Request, res: Response): Promise<void> =
         break;
     }
 
-    // Tech-specific tips
     if (jobTags.includes('react')) {
       tips.push('Be prepared to discuss React hooks, component patterns, state management, and performance optimization.');
     }
@@ -291,14 +248,12 @@ router.post('/ai/job-tips', async (req: Request, res: Response): Promise<void> =
       tips.push('Prepare examples of your testing approach: unit tests, integration tests, and end-to-end tests.');
     }
 
-    // Work type tips
     if (job.type === 'remote') {
       tips.push('Emphasize your remote work experience, self-discipline, and async communication skills.');
     } else if (job.type === 'hybrid') {
       tips.push('Show flexibility and willingness to work both in-office and remotely.');
     }
 
-    // Interview prep
     const interviewPrep: string[] = [
       'Review the company website and recent news to show genuine interest.',
       `Research ${job.company} on LinkedIn and Glassdoor for culture insights.`,
@@ -337,10 +292,6 @@ router.post('/ai/job-tips', async (req: Request, res: Response): Promise<void> =
   }
 });
 
-/**
- * POST /api/ai/cover-letter
- * Generate a cover letter template for a specific job.
- */
 router.post('/ai/cover-letter', async (req: Request, res: Response): Promise<void> => {
   try {
     const { job_id, user_name, user_skills, user_experience, user_highlights } = req.body;
@@ -350,22 +301,20 @@ router.post('/ai/cover-letter', async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    // Fetch the job
-    const { data: job, error } = await supabase
-      .from('jobs')
-      .select('*')
-      .eq('id', job_id)
-      .single();
+    const { rows } = await pool.query(
+      `SELECT * FROM jobs WHERE id = $1 LIMIT 1`,
+      [job_id]
+    );
 
-    if (error || !job) {
+    if (rows.length === 0) {
       res.status(404).json({ error: 'Job not found' });
       return;
     }
 
+    const job = rows[0];
     const name = user_name || '[Your Name]';
     const jobTags: string[] = job.tags || [];
 
-    // Parse user skills
     const userSkillList: string[] = user_skills
       ? extractSkillsFromText(
           Array.isArray(user_skills) ? user_skills.join(' ') : user_skills
@@ -379,7 +328,6 @@ router.post('/ai/cover-letter', async (req: Request, res: Response): Promise<voi
     const experience = user_experience || '[X years of experience in frontend development]';
     const highlights = user_highlights || [];
 
-    // Build the cover letter
     const today = new Date().toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',

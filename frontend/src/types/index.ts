@@ -24,6 +24,7 @@ export interface JobFilters {
   tags: string[];
   sort_by: 'posted_at' | 'relevance';
   hide_duplicates: boolean;
+  location_romania: boolean;
 }
 
 export interface JobStats {

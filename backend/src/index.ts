@@ -8,6 +8,7 @@ import cron from 'node-cron';
 import jobsRouter from './routes/jobs';
 import aiRouter from './routes/ai';
 import { runAllScrapers } from './scrapers';
+import { shutdownPool } from './utils/db';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -41,6 +42,27 @@ app.get('/api/health', (_req, res) => {
     uptime: process.uptime(),
     version: '1.0.0',
   });
+});
+
+// Scraper pause/resume control
+let scraperPaused = false;
+
+app.get('/api/scraper/status', (_req, res) => {
+  res.json({ paused: scraperPaused });
+});
+
+app.post('/api/scraper/pause', (_req, res) => {
+  scraperPaused = true;
+  scheduledTask.stop();
+  console.log('Scraper paused by user.');
+  res.json({ paused: true, message: 'Scraper paused' });
+});
+
+app.post('/api/scraper/resume', (_req, res) => {
+  scraperPaused = false;
+  scheduledTask.start();
+  console.log('Scraper resumed by user.');
+  res.json({ paused: false, message: 'Scraper resumed' });
 });
 
 // 404 fallback
@@ -109,8 +131,10 @@ function shutdown(signal: string) {
   scheduledTask.stop();
   console.log('Cron job stopped.');
 
-  server.close(() => {
+  server.close(async () => {
     console.log('HTTP server closed.');
+    await shutdownPool();
+    console.log('Database pool closed.');
     process.exit(0);
   });
 

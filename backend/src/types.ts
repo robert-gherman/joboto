@@ -33,4 +33,5 @@ export interface JobFilters {
   limit?: number;
   sort_by?: 'posted_at' | 'relevance';
   hide_duplicates?: boolean;
+  location_romania?: boolean;
 }
