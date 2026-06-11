@@ -73,7 +73,16 @@
       "Bash(cd:*)",
       "Bash(npx tsc *)",
       "PowerShell(try { $r = Invoke-RestMethod -Uri \"http://localhost:3001/api/jobs/stats\" -Method Get; $r | ConvertTo-Json -Depth 5 } catch { $_.Exception.Message; $_.ErrorDetails.Message })",
-      "PowerShell(\\(Get-Content \"D:\\\\vsfile\\\\joboto\\\\jobs_rows.csv\" | Measure-Object -Line\\).Lines)"
+      "PowerShell(\\(Get-Content \"D:\\\\vsfile\\\\joboto\\\\jobs_rows.csv\" | Measure-Object -Line\\).Lines)",
+      "Bash(grep -E \"\\\\.ts$\")",
+      "Bash(grep \"\\\\.ts$\")",
+      "WebFetch(domain:www.stepstone.de)",
+      "WebFetch(domain:www.jobware.de)",
+      "WebFetch(domain:www.xing.com)",
+      "WebFetch(domain:www.kununu.com)",
+      "WebFetch(domain:www.get-in-engineering.de)",
+      "WebFetch(domain:euremotejobs.com)",
+      "WebFetch(domain:www.workingnomads.com)"
     ]
   }
 }
